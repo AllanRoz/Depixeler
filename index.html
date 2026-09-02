@@ -1,0 +1,2844 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>DEPIXELER — Incremental Destruction Roguelite</title>
+<meta name="description" content="Launch energy orbs into enormous pixel structures. Excavate ancient formations and destroy the Golden Core.">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#04030d;--panel:rgba(8,6,26,.97);--border:rgba(80,120,255,.32);
+  --accent:#4a7fff;--accent2:#a04aff;--gold:#ffd700;--cyan:#00e5ff;
+  --text:#c8d8ff;--dim:#607094;--green:#30ff80;--red:#ff4060;
+  --font:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace
+}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font);user-select:none;-webkit-user-select:none;touch-action:none}
+#c{position:fixed;top:0;left:0;display:block;image-rendering:pixelated;image-rendering:crisp-edges;cursor:crosshair}
+
+/* HUD */
+#hud{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:linear-gradient(to bottom,rgba(4,3,13,.94) 0%,rgba(4,3,13,.6) 70%,transparent 100%);pointer-events:none;z-index:10;gap:8px}
+.hb{display:flex;flex-direction:column;gap:1px}
+.hl{font-size:9px;color:var(--dim);letter-spacing:2px;text-transform:uppercase}
+.hv{font-size:16px;font-weight:bold;color:var(--text)}
+.hv.gold{color:var(--gold);text-shadow:0 0 10px rgba(255,215,0,.4)}
+.hv.acc{color:var(--accent)}
+
+/* Core Radar / Compass */
+#radar-box{display:flex;align-items:center;gap:6px;background:rgba(255,215,0,.08);border:1px solid rgba(255,215,0,.25);border-radius:20px;padding:3px 10px;pointer-events:auto;cursor:help}
+#radar-icon{width:16px;height:16px;border-radius:50%;background:radial-gradient(circle,var(--gold) 30%,transparent 70%);animation:rPulse 1.4s infinite}
+#radar-txt{font-size:10px;color:var(--gold);font-weight:bold;letter-spacing:1px}
+@keyframes rPulse{0%,100%{transform:scale(0.85);opacity:0.6}50%{transform:scale(1.25);opacity:1}}
+
+.hbtns{display:flex;align-items:center;gap:6px;pointer-events:auto}
+#speed-btn{min-width:40px;padding:6px 10px;font-weight:bold;border-color:rgba(0,229,255,.4);color:var(--cyan);background:rgba(0,229,255,.08)}
+#speed-btn:hover{background:rgba(0,229,255,.2);box-shadow:0 0 10px rgba(0,229,255,.3)}
+#recall-btn{background:rgba(255,64,96,.18);border-color:rgba(255,64,96,.5);color:#ff90a0;display:none}
+#recall-btn:hover{background:rgba(255,64,96,.35);box-shadow:0 0 12px rgba(255,64,96,.4)}
+
+/* Combo Box */
+#combo{position:fixed;right:16px;top:44%;transform:translateY(-50%);text-align:right;pointer-events:none;z-index:10;transition:opacity .25s,transform .2s}
+#combo.hide{opacity:0;transform:translateY(-50%) scale(0.8)}
+.cl{font-size:9px;color:var(--dim);letter-spacing:2px}
+.cv{font-size:30px;font-weight:900;color:var(--accent);line-height:1;transition:all .15s}
+.cv.mega{color:var(--gold);font-size:42px;text-shadow:0 0 26px var(--gold)}
+.cv.ultra{color:var(--cyan);font-size:50px;text-shadow:0 0 32px var(--cyan)}
+
+/* Launch Bar */
+#lbar{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;z-index:10;background:rgba(8,6,26,.88);border:1px solid var(--border);border-radius:14px;padding:8px 16px;pointer-events:auto;backdrop-filter:blur(6px);box-shadow:0 4px 20px rgba(0,0,0,.5)}
+#obs{display:flex;gap:6px}
+.ob{width:40px;height:40px;border-radius:50%;border:2px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .18s;position:relative}
+.ob.sel{border-color:var(--accent);background:rgba(74,127,255,.25);box-shadow:0 0 14px rgba(74,127,255,.5);transform:scale(1.08)}
+.ob:not(.lck):hover{transform:scale(1.12);border-color:rgba(255,255,255,.45)}
+.ob.lck{opacity:.3;cursor:not-allowed}
+.ob-badge{position:absolute;bottom:-2px;right:-2px;font-size:8px;font-weight:bold;background:rgba(0,0,0,.8);border-radius:4px;padding:1px 3px;border:1px solid var(--border)}
+#binfo{text-align:center;min-width:54px}
+#binfo span{font-size:22px;font-weight:bold;color:var(--text);display:block;line-height:1}
+#binfo small{font-size:9px;color:var(--dim);letter-spacing:1px}
+#aim-lbl{font-size:10px;color:var(--dim);letter-spacing:1px;text-align:center}
+
+/* General Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:rgba(74,127,255,.09);color:var(--text);font-family:var(--font);font-size:12px;cursor:pointer;letter-spacing:1px;transition:all .18s;white-space:nowrap}
+.btn:hover{background:rgba(74,127,255,.24);border-color:var(--accent);transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btn.pri{background:rgba(74,127,255,.32);border-color:var(--accent);color:#fff}
+.btn.pri:hover{background:rgba(74,127,255,.5);box-shadow:0 0 18px rgba(74,127,255,.4)}
+.btn.gld{background:rgba(255,215,0,.14);border-color:var(--gold);color:var(--gold)}
+.btn.gld:hover{background:rgba(255,215,0,.32);box-shadow:0 0 18px rgba(255,215,0,.3)}
+.btn.dan{background:rgba(255,64,96,.1);border-color:rgba(255,64,96,.4);color:var(--red)}
+.btn.dan:hover{background:rgba(255,64,96,.25)}
+.btn.sml{padding:6px 12px;font-size:11px}
+.brow{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:14px}
+
+/* Overlays & Panels */
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.84);display:flex;align-items:center;justify-content:center;z-index:50;backdrop-filter:blur(6px)}
+.pnl{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:26px;max-width:540px;width:92%;max-height:88vh;overflow-y:auto;box-shadow:0 0 60px rgba(74,127,255,.16)}
+.pt{font-size:22px;font-weight:900;letter-spacing:3px;text-align:center;text-transform:uppercase;margin-bottom:6px}
+.ps{font-size:10px;color:var(--dim);text-align:center;letter-spacing:2px;margin-bottom:18px}
+.sep{height:1px;background:var(--border);margin:14px 0}
+
+/* Main Menu */
+#menu{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:50;background:radial-gradient(circle at center,#090822 0%,#04030d 100%)}
+.logo{font-size:clamp(38px,7.5vw,70px);font-weight:900;letter-spacing:8px;background:linear-gradient(135deg,var(--accent) 0%,var(--cyan) 35%,var(--accent2) 70%,var(--gold) 100%);-webkit-background-clip:text;background-clip:text;color:transparent;text-transform:uppercase;margin-bottom:4px;text-shadow:0 0 30px rgba(74,127,255,.3)}
+.lsub{font-size:11px;color:var(--dim);letter-spacing:4px;margin-bottom:34px}
+.mbtns{display:flex;flex-direction:column;gap:10px;width:220px}
+.mst{margin-top:28px;display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+.ms{text-align:center;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:8px;padding:8px 14px;min-width:85px}
+.ms .v{font-size:16px;color:var(--accent);font-weight:bold}
+.ms .l{font-size:9px;color:var(--dim);letter-spacing:1px}
+
+/* Level Complete Card */
+.rc{background:rgba(255,215,0,.04);border:1px solid rgba(255,215,0,.25);border-radius:10px;padding:16px;text-align:center;margin:10px 0}
+.rc .rv{font-size:28px;font-weight:bold;color:var(--gold);text-shadow:0 0 15px rgba(255,215,0,.4)}
+.rc .rl{font-size:10px;color:var(--dim);letter-spacing:1px;margin-bottom:4px}
+.sg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+.si{background:rgba(255,255,255,.03);border-radius:8px;padding:10px;text-align:center;border:1px solid rgba(80,120,255,.15)}
+.si .v{font-size:17px;font-weight:bold;color:var(--accent)}
+.si .l{font-size:9px;color:var(--dim);letter-spacing:1px}
+
+/* Roguelite Upgrade Choice Cards */
+#uc{position:fixed;inset:0;overflow-y:auto;background:rgba(0,0,0,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:50;backdrop-filter:blur(6px)}
+.ucg{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin:18px 0;max-width:680px}
+.ucc{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px;cursor:pointer;transition:all .2s;width:200px;text-align:center;position:relative;overflow:hidden}
+.ucc:hover{border-color:var(--accent);background:rgba(74,127,255,.18);transform:translateY(-4px);box-shadow:0 8px 24px rgba(74,127,255,.25)}
+.ucc .ui{font-size:26px;margin-bottom:8px}
+.ucc .un{font-size:14px;font-weight:bold;margin-bottom:4px;color:#fff}
+.ucc .ud{font-size:10px;color:var(--dim);line-height:1.5}
+.ucc-tag{position:absolute;top:6px;right:6px;font-size:8px;padding:2px 5px;border-radius:4px;background:rgba(0,229,255,.15);color:var(--cyan);font-weight:bold}
+
+/* Upgrade Tree Screen */
+#ut{position:fixed;inset:0;display:flex;flex-direction:column;z-index:50;background:rgba(4,3,13,.98);backdrop-filter:blur(6px)}
+#uth{padding:12px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);flex-shrink:0;background:rgba(8,6,26,.8)}
+#utc{flex:1;width:100%;cursor:grab}
+#utc:active{cursor:grabbing}
+
+/* Settings */
+.srow{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.sl{font-size:12px;color:var(--text)}
+input[type=range]{-webkit-appearance:none;width:110px;height:4px;background:rgba(74,127,255,.3);border-radius:2px;outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--accent);cursor:pointer}
+.tog{position:relative;width:42px;height:22px;cursor:pointer}
+.tog input{opacity:0;width:0;height:0}
+.ts2{position:absolute;inset:0;background:rgba(255,255,255,.12);border-radius:11px;transition:.2s}
+.ts2::before{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;background:var(--dim);border-radius:50%;transition:.2s}
+.tog input:checked+.ts2{background:rgba(74,127,255,.45)}
+.tog input:checked+.ts2::before{transform:translateX(20px);background:var(--accent)}
+
+/* Statistics Grid */
+.stg{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
+.stc{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center}
+.stc .v{font-size:20px;font-weight:bold;color:var(--accent);margin-bottom:2px}
+.stc .l{font-size:9px;color:var(--dim);letter-spacing:1px}
+
+/* Pause Overlay */
+#pw{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;z-index:50;backdrop-filter:blur(4px)}
+
+/* Floating Text Popups */
+#flt{position:fixed;inset:0;pointer-events:none;z-index:20;overflow:hidden}
+.ft{position:absolute;font-weight:bold;text-shadow:0 0 8px currentColor;animation:fup 1.15s ease-out forwards;white-space:nowrap;pointer-events:none;transform:translateX(-50%)}
+.ft.bits{color:var(--gold);font-size:13px}
+.ft.crit{color:#ff5555;font-size:16px;font-weight:900}
+.ft.combo{color:var(--accent);font-size:20px}
+.ft.chain{color:var(--cyan);font-size:14px}
+.ft.core{color:var(--gold);font-size:24px;text-shadow:0 0 20px var(--gold)}
+@keyframes fup{0%{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}100%{opacity:0;transform:translateX(-50%) translateY(-55px) scale(.75)}}
+
+/* Debug Panel */
+#dbg{position:fixed;top:54px;right:8px;background:rgba(0,0,0,.92);border:1px solid rgba(80,120,255,.3);border-radius:6px;padding:8px 12px;font-size:9px;color:rgba(255,255,255,.8);z-index:200;display:none;line-height:1.9;min-width:160px}
+
+/* Tooltip */
+#ttp{position:fixed;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 14px;pointer-events:none;z-index:300;max-width:240px;display:none;box-shadow:0 8px 24px rgba(0,0,0,.6)}
+.tn{font-size:13px;font-weight:bold;margin-bottom:3px;color:#fff}
+.td{font-size:10px;color:var(--dim);line-height:1.4;margin-bottom:6px}
+.tc{font-size:11px;color:var(--gold);font-weight:bold}
+.tl{font-size:10px;color:var(--dim)}
+
+/* Tutorial Overlay */
+#tut{position:fixed;inset:0;z-index:200;pointer-events:none}
+.tub{position:absolute;background:var(--panel);border:1px solid var(--accent);border-radius:10px;padding:14px 16px;font-size:11px;color:var(--text);max-width:260px;line-height:1.6;pointer-events:auto;box-shadow:0 0 24px rgba(74,127,255,.35)}
+
+/* Loader Screen */
+#ld{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg);z-index:999;gap:14px;transition:opacity .5s}
+.lt{font-size:32px;font-weight:900;letter-spacing:6px;color:var(--accent)}
+.lb{width:180px;height:3px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden}
+.lf{height:100%;background:linear-gradient(90deg,var(--accent),var(--cyan),var(--gold));animation:lda 1.2s ease forwards}
+@keyframes lda{from{width:0}to{width:100%}}
+
+/* Banner Alert */
+#banner{position:fixed;top:60px;left:50%;transform:translateX(-50%);background:rgba(8,6,26,.95);border:1px solid var(--gold);color:var(--gold);padding:8px 20px;border-radius:20px;font-size:12px;font-weight:bold;letter-spacing:2px;pointer-events:none;z-index:40;opacity:0;transition:opacity .3s,transform .3s;box-shadow:0 0 20px rgba(255,215,0,.3)}
+#banner.show{opacity:1;transform:translateX(-50%) translateY(4px)}
+
+.hidden{display:none!important}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:rgba(74,127,255,.3);border-radius:3px}
+@keyframes ap{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
+.anim{animation:ap .22s ease}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <div class="hb"><div class="hl">LEVEL</div><div class="hv acc" id="hlv">01</div></div>
+  <div class="hb" style="flex:1"><div class="hl">FORMATION</div><div class="hv" id="hfm" style="font-size:11px">—</div></div>
+  <div id="radar-box" title="Core Proximity Beacon">
+    <div id="radar-icon"></div>
+    <div id="radar-txt">CORE SIGNAL</div>
+  </div>
+  <div class="hb"><div class="hl">BITS</div><div class="hv gold" id="hbt">0</div></div>
+  <div class="hbtns">
+    <button class="btn sml" id="speed-btn" onclick="_toggleSpeed()" title="Game Speed">1X</button>
+    <button class="btn sml" id="recall-btn" onclick="_recallBalls()" title="Recall all balls to launcher">⚡ RECALL</button>
+    <button class="btn sml" onclick="_pause()">⏸ PAUSE</button>
+    <button class="btn sml" onclick="_showTree()">⚡ UPGRADES</button>
+  </div>
+</div>
+
+<!-- Combo Counter -->
+<div id="combo" class="hide">
+  <div class="cl">COMBO</div>
+  <div class="cv" id="cv">×1</div>
+</div>
+
+<!-- Launch Controls -->
+<div id="lbar" class="hidden">
+  <div id="obs">
+    <div class="ob sel" id="ob0" onclick="_selOrb(0)" title="Kinetic Orb — Balanced, high impact punch">⚪<span class="ob-badge">KIN</span></div>
+    <div class="ob lck" id="ob1" onclick="_selOrb(1)" title="Lightning Orb — Zaps and arcs electricity">⚡<span class="ob-badge">LIG</span></div>
+    <div class="ob lck" id="ob2" onclick="_selOrb(2)" title="Poison Orb — Spreads corrosive acid">☠<span class="ob-badge">POI</span></div>
+    <div class="ob lck" id="ob3" onclick="_selOrb(3)" title="Laser Orb — Pierces through 1HP pixels">🔴<span class="ob-badge">LAS</span></div>
+  </div>
+  <div id="binfo"><span id="bn">1</span><small>BALLS</small></div>
+  <div id="aim-lbl">DRAG / AIM &amp; LAUNCH</div>
+</div>
+
+<!-- Banner Notification -->
+<div id="banner">✦ CORE FOUND ✦</div>
+
+<!-- Floating Text Container -->
+<div id="flt"></div>
+
+<!-- Debug Info -->
+<div id="dbg">
+  FPS: <span id="df">60</span><br>
+  SPEED: <span id="dsp">1X</span><br>
+  BALLS: <span id="dba">0</span><br>
+  PARTS: <span id="dp">0</span><br>
+  PIXELS: <span id="dpx">0</span><br>
+  DESTROYED: <span id="dd">0</span><br>
+  ZOOM: <span id="dz">1.0</span><br>
+  CORE HP: <span id="dchp">-</span>
+</div>
+
+<div id="ttp"><div class="tn" id="ttn"></div><div class="td" id="ttd"></div><div class="tl" id="ttl"></div><div class="tc" id="ttc"></div></div>
+
+<!-- Initial Loader -->
+<div id="ld"><div class="lt">DEPIXELER</div><div class="lb"><div class="lf"></div></div><div style="font-size:10px;color:var(--dim);letter-spacing:2px">EXCAVATING MATRIX...</div></div>
+
+<!-- Main Menu -->
+<div id="menu" class="hidden">
+  <div class="logo">DEPIXELER</div>
+  <div class="lsub">INCREMENTAL DESTRUCTION ROGUELITE</div>
+  <div class="mbtns">
+    <button class="btn pri" onclick="_start()">▶ START RUN</button>
+    <button class="btn" onclick="_showTree()">⚡ UPGRADES</button>
+    <button class="btn" onclick="_showStats()">📊 STATISTICS</button>
+    <button class="btn" onclick="_showSet()">⚙ SETTINGS</button>
+    <button class="btn" onclick="_showHTP()">? HOW TO PLAY</button>
+    <button class="btn dan" onclick="_resetConfirm()">⚠ RESET SAVE</button>
+  </div>
+  <div class="mst" id="mst"></div>
+</div>
+
+<!-- Pause Screen -->
+<div id="pw" class="hidden">
+  <div class="pnl anim" style="max-width:360px;text-align:center">
+    <div class="pt">⏸ PAUSED</div>
+    <div class="brow"><button class="btn pri" onclick="_resume()">▶ RESUME</button><button class="btn" onclick="_restart()">↺ RESTART</button></div>
+    <div class="brow"><button class="btn" onclick="_showSet(true)">⚙ SETTINGS</button><button class="btn dan" onclick="_menu()">✕ MENU</button></div>
+  </div>
+</div>
+
+<!-- Level Complete Screen -->
+<div id="lvc" class="hidden">
+  <div class="ov"><div class="pnl anim" style="max-width:440px">
+    <div class="pt" style="color:var(--gold)">✦ CORE EXCAVATED ✦</div>
+    <div class="ps">LEVEL COMPLETED</div>
+    <div class="rc"><div class="rl">BITS EARNED</div><div class="rv" id="lcb">0</div></div>
+    <div class="sg" id="lcs"></div>
+    <div class="brow"><button class="btn gld" onclick="_contUpg()">⚡ CHOOSE RUN UPGRADE</button></div>
+  </div></div>
+</div>
+
+<!-- Roguelite Upgrade Choice -->
+<div id="uc" class="hidden">
+  <div style="text-align:center;padding:24px 14px">
+    <div class="pt">⚡ FIELD MODIFICATION</div>
+    <div class="ps">CHOOSE 1 PERK FOR THIS EXPEDITION</div>
+    <div class="ucg" id="ucg"></div>
+    <button class="btn" onclick="_skip()">SKIP &amp; CONTINUE →</button>
+  </div>
+</div>
+
+<!-- Run Complete / Milestone Screen -->
+<div id="runc" class="hidden">
+  <div class="ov"><div class="pnl anim">
+    <div class="pt" style="color:var(--gold)">✦ EXPEDITION MILESTONE ✦</div>
+    <div class="ps">PROGRESS PERSISTED TO MEMORY</div>
+    <div class="sg" id="rcs"></div>
+    <div class="brow"><button class="btn pri" onclick="_start()">▶ NEXT EXPEDITION</button><button class="btn" onclick="_menu()">⌂ MENU</button></div>
+  </div></div>
+</div>
+
+<!-- Upgrade Tree Screen -->
+<div id="ut" class="hidden">
+  <div id="uth">
+    <div><div style="font-size:14px;font-weight:900;letter-spacing:2px">⚡ ARTIFACT TECHNOLOGY TREE</div><div style="font-size:10px;color:var(--dim)">PERMANENT METAPROGRESSION — <span id="tb" style="color:var(--gold);font-weight:bold">0</span> BITS</div></div>
+    <button class="btn sml" onclick="_closeTree()">✕ RETURN</button>
+  </div>
+  <canvas id="utc"></canvas>
+</div>
+
+<!-- Settings Screen -->
+<div id="sset" class="hidden">
+  <div class="ov"><div class="pnl anim" style="max-width:400px">
+    <div class="pt">⚙ SETTINGS</div><div class="sep"></div>
+    <div class="srow"><div class="sl">Master Volume</div><input type="range" id="sv" min="0" max="100" value="70" oninput="_set('vol',this.value)"></div>
+    <div class="srow"><div class="sl">SFX Volume</div><input type="range" id="ss" min="0" max="100" value="100" oninput="_set('sfx',this.value)"></div>
+    <div class="srow"><div class="sl">Screen Shake</div><label class="tog"><input type="checkbox" id="sh" checked onchange="_set('shake',this.checked)"><span class="ts2"></span></label></div>
+    <div class="srow"><div class="sl">Reduced Effects</div><label class="tog"><input type="checkbox" id="re" onchange="_set('reduced',this.checked)"><span class="ts2"></span></label></div>
+    <div class="brow"><button class="btn pri" onclick="_closeSet()">✓ DONE</button></div>
+  </div></div>
+</div>
+
+<!-- Statistics Screen -->
+<div id="sts" class="hidden">
+  <div class="ov"><div class="pnl anim">
+    <div class="pt">📊 ARCHAEOLOGICAL RECORDS</div><div class="ps">LIFETIME ACHIEVEMENTS</div>
+    <div class="stg" id="stc"></div>
+    <div class="brow"><button class="btn" onclick="_closeSts()">✕ CLOSE</button></div>
+  </div></div>
+</div>
+
+<!-- How To Play Screen -->
+<div id="htp" class="hidden">
+  <div class="ov"><div class="pnl anim" style="max-width:480px">
+    <div class="pt">? EXPEDITION MANUAL</div>
+    <div style="font-size:11px;color:var(--dim);line-height:2.0">
+      <b style="color:var(--text)">OBJECTIVE</b><br>
+      You are excavating ancient colossal pixel monoliths. Embedded deep inside each formation lies a rare <span style="color:var(--gold)">✦ Golden Core</span>. Destroy it to complete the sector!<br><br>
+      <b style="color:var(--text)">CONTROLS</b><br>
+      🖱 <b>Aim &amp; Launch</b>: Drag or click on the arena to aim the trajectory beam and release to fire.<br>
+      🖱 <b>Pan &amp; Zoom</b>: Scroll wheel or pinch to zoom. Middle-drag, right-drag, or WASD to pan.<br>
+      ⚡ <b>Quick Recall</b>: Hit the RECALL button to instantly return flying orbs.<br>
+      ⏩ <b>Fast Forward</b>: Toggle 1X, 2X, or 3X game simulation speed.<br><br>
+      <b style="color:var(--text)">ORB TYPES</b><br>
+      ⚪ <b>Kinetic</b>: Reliable, heavy damage, emits kinetic shockwaves.<br>
+      ⚡ <b>Lightning</b>: Zaps nearby pixels with electric arcs on every strike.<br>
+      ☠ <b>Poison</b>: Corrodes pixels with spreading acidic slime.<br>
+      🔴 <b>Laser</b>: Pierces straight through 1-HP pixels without stopping.<br><br>
+      <b style="color:var(--text)">PIXEL FORMATIONS</b><br>
+      🔵 Normal (1HP) &bull; 🟣 Hard (3HP) &bull; 🔷 Armored (8HP)<br>
+      🟠 Explosive &bull; 🟡 Electric &bull; 🟢 Poison &bull; <span style="color:var(--gold)">★ Golden Core (Win Condition)</span>
+    </div>
+    <div class="brow"><button class="btn pri" onclick="_closeHTP()">▶ PROCEED</button></div>
+  </div></div>
+</div>
+
+<!-- Interactive Tutorial Overlay -->
+<div id="tut" class="hidden"></div>
+
+<script>
+'use strict';
+// ═══════════════════════════════════════════════════════════
+// §1 CONFIGURATION & CONSTANTS
+// ═══════════════════════════════════════════════════════════
+const CFG = {
+  GW: 480, GH: 360, PS: 4, CHUNK: 32,
+  MAX_BALLS: 64, SPD: 320, RAD: 5, DMG: 1,
+  FIXED_DT: 1 / 120, MAX_DT: 0.05,
+  MIN_SPD: 60, MIN_VY: 0.18, MAX_SUB: 8,
+  MAX_PART: 2800,
+  COMBO_DEC: 3.2,
+  ZMIN: 0.12, ZMAX: 5.5,
+  SOUND_THR: 18,
+  CHAIN_RNG: 64, CHAIN_BASE: 3,
+  POI_TICK: 0.28,
+  BITS_CURVE: 1.15,
+  SHAKE_DEC: 9,
+  DEST_BUD: 1400,
+  EROSION_INT: 0.5,
+  TUR_RATE: 1.6, TUR_RANGE: 300,
+  DRONE_RATE: 2.0
+};
+
+const PT = { E:0, N:1, H:2, A:3, X:4, L:5, P:6, C:7 };
+const PT_HP = [0, 1, 3, 8, 1, 2, 1, 25];
+const PT_BITS = [0, 1, 3, 10, 5, 8, 6, 500];
+const FLG_D = 1, FLG_P = 2, FLG_F = 4;
+const PROJ = { K:0, L:1, P:2, R:3 };
+const PC = ['#aaccff', '#ffee44', '#44ff88', '#ff3344'];
+const GS = { BOOT:0, MENU:1, PLAY:2, PAUSE:3, UPG:4, LVC:5, RUN:6, SET:7, STS:8, TREE:9, HTP:10 };
+const FTL = ['GLYPH', 'MONOLITH', 'RING', 'SPIRAL', 'GEOMETRIC', 'ORGANIC', 'FRACTURED', 'COMPOSITE'];
+
+// Curated retro-futuristic arcade palette
+const PAL = [
+  [4, 3, 13],     // 0 empty bg
+  [55, 110, 230], // 1 normal
+  [32, 70, 170],  // 2 normal dmg
+  [140, 55, 230], // 3 hard
+  [95, 36, 175],  // 4 hard dmg
+  [75, 185, 210], // 5 armored
+  [48, 128, 150], // 6 armored dmg
+  [245, 95, 25],  // 7 explosive
+  [185, 55, 15],  // 8 explosive dmg
+  [245, 230, 45], // 9 electric
+  [190, 175, 30], // 10 electric dmg
+  [45, 225, 80],  // 11 poison
+  [30, 155, 52],  // 12 poison dmg
+  [255, 215, 0],  // 13 core gold
+  [255, 160, 0],  // 14 core orange
+  [255, 245, 120],// 15 core high
+  [255, 130, 0]   // 16 core dmg
+];
+const TC = [[0],[1,2],[3,4],[5,6],[7,8],[9,10],[11,12],[13,16]];
+
+// ═══════════════════════════════════════════════════════════
+// §2 UTILITIES
+// ═══════════════════════════════════════════════════════════
+function mkRng(s){
+  let r = (s >>> 0) || 1;
+  return {
+    nx(){ r = (Math.imul(r, 1664525) + 1013904223) >>> 0; return r / 0x100000000; },
+    ni(a, b){ return a + (this.nx() * (b - a + 1)) | 0; },
+    nb(p = .5){ return this.nx() < p; }
+  };
+}
+function fmt(n){
+  if(!isFinite(n) || n !== n) return '0';
+  n = Math.floor(n);
+  if(n < 1e3) return '' + n;
+  if(n < 1e6) return (n / 1e3).toFixed(n < 1e4 ? 1 : 0) + 'K';
+  if(n < 1e9) return (n / 1e6).toFixed(1) + 'M';
+  if(n < 1e12) return (n / 1e9).toFixed(1) + 'B';
+  return (n / 1e12).toFixed(1) + 'T';
+}
+function cl(v, lo, hi){ return v < lo ? lo : v > hi ? hi : v; }
+function lerp(a, b, t){ return a + (b - a) * t; }
+
+// Value Noise Table
+const NT = new Float32Array(65536);
+(()=>{ const r = mkRng(9871234); for(let i = 0; i < 65536; i++) NT[i] = r.nx(); })();
+function n2(x, y){
+  const ix = Math.floor(x) & 255, iy = Math.floor(y) & 255;
+  const fx = x - Math.floor(x), fy = y - Math.floor(y);
+  const ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
+  const n00 = NT[iy * 256 + ix], n10 = NT[iy * 256 + ((ix + 1) & 255)];
+  const n01 = NT[((iy + 1) & 255) * 256 + ix], n11 = NT[((iy + 1) & 255) * 256 + ((ix + 1) & 255)];
+  return n00 * (1 - ux) * (1 - uy) + n10 * ux * (1 - uy) + n01 * (1 - ux) * uy + n11 * ux * uy;
+}
+
+// ═══════════════════════════════════════════════════════════
+// §3 SAVE & LOCALSTORAGE
+// ═══════════════════════════════════════════════════════════
+const SK = 'depixeler_v2';
+let SV = null;
+function defSV(){
+  return {
+    ver: 2, cur: 0, lbits: 0, upg: {},
+    sts: { px:0, cores:0, balls:0, combo:0, lvl:0, runs:0, bits:0, chains:0, poi:0 },
+    proj: [true, false, false, false],
+    set: { vol: 0.7, sfx: 1.0, shake: true, reduced: false },
+    mute: false, first: true
+  };
+}
+function loadSV(){
+  try{
+    const r = localStorage.getItem(SK) || localStorage.getItem('depixeler_v1');
+    if(!r){ SV = defSV(); return; }
+    const p = JSON.parse(r);
+    const d = defSV();
+    SV = Object.assign(d, p);
+    SV.sts = Object.assign(d.sts, p.sts || {});
+    SV.set = Object.assign(d.set, p.set || {});
+    SV.proj = Array.isArray(p.proj) ? p.proj : d.proj;
+    SV.upg = p.upg || {};
+  }catch(e){ SV = defSV(); }
+}
+function saveSV(){ try{ localStorage.setItem(SK, JSON.stringify(SV)); }catch(e){} }
+
+// ═══════════════════════════════════════════════════════════
+// §4 AUDIO SYNTHESIZER (WEB AUDIO API)
+// ═══════════════════════════════════════════════════════════
+let AC = null, MG = null, AI = false;
+const ST = {};
+function initAudio(){
+  if(AI) return;
+  try{
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    MG = AC.createGain();
+    MG.gain.value = SV.set.vol;
+    MG.connect(AC.destination);
+    AI = true;
+  }catch(e){}
+}
+function resumeAC(){
+  if(AC && AC.state === 'suspended') AC.resume();
+}
+function cSnd(k){
+  const n = performance.now();
+  if(ST[k] && n - ST[k] < CFG.SOUND_THR) return false;
+  ST[k] = n; return true;
+}
+function tone(f, t, d, g, det = 0, rampF = 0){
+  if(!AC || SV.mute) return;
+  try{
+    const gn = AC.createGain();
+    gn.gain.setValueAtTime(g * SV.set.sfx, AC.currentTime);
+    gn.gain.exponentialRampToValueAtTime(0.001, AC.currentTime + d);
+    gn.connect(MG);
+    const o = AC.createOscillator();
+    o.type = t;
+    o.frequency.setValueAtTime(f, AC.currentTime);
+    if(rampF > 0) o.frequency.exponentialRampToValueAtTime(rampF, AC.currentTime + d);
+    o.detune.value = det;
+    o.connect(gn);
+    o.start();
+    o.stop(AC.currentTime + d);
+    o.onended = () => { o.disconnect(); gn.disconnect(); };
+  }catch(e){}
+}
+function nois(d, g, f = 800){
+  if(!AC || SV.mute) return;
+  try{
+    const b = AC.createBuffer(1, AC.sampleRate * d, AC.sampleRate);
+    const dt = b.getChannelData(0);
+    for(let i = 0; i < dt.length; i++) dt[i] = Math.random() * 2 - 1;
+    const s = AC.createBufferSource();
+    s.buffer = b;
+    const fl = AC.createBiquadFilter();
+    fl.type = 'bandpass';
+    fl.frequency.value = f;
+    fl.Q.value = 2.5;
+    const gn = AC.createGain();
+    gn.gain.setValueAtTime(g * SV.set.sfx, AC.currentTime);
+    gn.gain.exponentialRampToValueAtTime(0.001, AC.currentTime + d);
+    s.connect(fl); fl.connect(gn); gn.connect(MG);
+    s.start(); s.stop(AC.currentTime + d);
+    s.onended = () => { s.disconnect(); fl.disconnect(); gn.disconnect(); };
+  }catch(e){}
+}
+
+const SFX = {
+  hit(t){
+    if(!cSnd('hit')) return;
+    if(t === PT.A) tone(120, 'square', 0.08, 0.18, 0, 80);
+    else tone(220 + t * 60, 'square', 0.05, 0.1);
+  },
+  dest(t){
+    if(!cSnd('dst')) return;
+    tone(260 + t * 50, 'sawtooth', 0.08, 0.16);
+    tone(390 + t * 35, 'square', 0.04, 0.07, 60);
+  },
+  combo(m){
+    const notes = [261.6, 293.7, 329.6, 392.0, 440.0, 523.2, 587.3, 659.3, 784.0];
+    const freq = notes[Math.min(notes.length - 1, (m - 1) % notes.length)];
+    tone(freq, 'triangle', 0.16, 0.22);
+    tone(freq * 1.5, 'sine', 0.12, 0.12);
+  },
+  lig(){
+    if(!cSnd('lig')) return;
+    nois(0.06, 0.16, 3200);
+    tone(1200, 'sawtooth', 0.04, 0.14, 0, 300);
+  },
+  poi(){
+    if(!cSnd('poi')) return;
+    tone(180, 'sine', 0.14, 0.09, 0, 120);
+    tone(150, 'triangle', 0.14, 0.07, -150);
+  },
+  las(){
+    if(!cSnd('las')) return;
+    tone(1400, 'sawtooth', 0.1, 0.15, 0, 280);
+    tone(420, 'sine', 0.09, 0.08);
+  },
+  upg(){
+    [440, 554, 659].forEach((f, i) => setTimeout(() => tone(f, 'triangle', 0.14, 0.16), i * 70));
+  },
+  coreProximity(){
+    if(!cSnd('cprox')) return;
+    tone(528, 'sine', 0.35, 0.12);
+  },
+  coreHit(){
+    tone(880, 'triangle', 0.2, 0.25);
+    tone(1100, 'sine', 0.2, 0.2);
+  },
+  coreDest(){
+    const arpeggio = [523.2, 659.3, 784.0, 987.8, 1174.7, 1568.0];
+    arpeggio.forEach((f, i) => setTimeout(() => tone(f, 'triangle', 0.45, 0.28), i * 90));
+  },
+  launch(){
+    tone(300, 'sine', 0.09, 0.18, 0, 450);
+    tone(600, 'triangle', 0.06, 0.1);
+  },
+  bounce(){
+    if(!cSnd('bnc')) return;
+    tone(135, 'sine', 0.035, 0.08);
+  },
+  done(){
+    [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 'triangle', 0.28, 0.22), i * 110));
+  }
+};
+function setVol(v){ if(MG) MG.gain.value = v; }
+
+// ═══════════════════════════════════════════════════════════
+// §5 INPUT SYSTEM (TOUCH + POINTER + KEYBOARD)
+// ═══════════════════════════════════════════════════════════
+const IN = {
+  down: false, x: 0, y: 0, sx: 0, sy: 0, pid: null,
+  p2: false, p2x: 0, p2y: 0, pD: 0, pZ: 1,
+  mid: false, msx: 0, msy: 0, mcx: 0, mcy: 0,
+  keys: {}, aiming: false, angle: -Math.PI / 2,
+  panActive: false
+};
+
+function initInput(){
+  const c = document.getElementById('c');
+  c.addEventListener('pointerdown', onPD);
+  c.addEventListener('pointermove', onPM);
+  c.addEventListener('pointerup', onPU);
+  c.addEventListener('pointercancel', onPU);
+  c.addEventListener('wheel', onWH, { passive: false });
+  c.addEventListener('contextmenu', e => e.preventDefault());
+  document.addEventListener('keydown', onKD);
+  document.addEventListener('keyup', e => IN.keys[e.code] = false);
+}
+
+function onPD(e){
+  e.preventDefault();
+  resumeAC();
+  // Middle click or Right click pan
+  if(e.button === 1 || e.button === 2){
+    IN.mid = true; IN.msx = e.clientX; IN.msy = e.clientY;
+    IN.mcx = CAM.tx; IN.mcy = CAM.ty;
+    return;
+  }
+  // Two finger pinch/pan detection
+  if(IN.down && !IN.p2){
+    IN.p2 = true; IN.p2x = e.clientX; IN.p2y = e.clientY;
+    const dx = IN.p2x - IN.x, dy = IN.p2y - IN.y;
+    IN.pD = Math.sqrt(dx * dx + dy * dy);
+    IN.pZ = CAM.tz;
+    IN.aiming = false;
+    return;
+  }
+  IN.down = true; IN.pid = e.pointerId;
+  IN.x = e.clientX; IN.y = e.clientY;
+  IN.sx = e.clientX; IN.sy = e.clientY;
+
+  if(G.state === GS.PLAY){
+    if(!G.fly){
+      IN.aiming = true;
+      updAngle(e.clientX, e.clientY);
+    } else {
+      // While balls are flying, single touch/click drag pans the camera!
+      IN.panActive = true;
+      IN.msx = e.clientX; IN.msy = e.clientY;
+      IN.mcx = CAM.tx; IN.mcy = CAM.ty;
+    }
+  }
+}
+
+function onPM(e){
+  // Middle or right drag pan
+  if(IN.mid || (IN.panActive && G.fly)){
+    const dx = (e.clientX - IN.msx) / CAM.z, dy = (e.clientY - IN.msy) / CAM.z;
+    CAM.tx = IN.mcx - dx; CAM.ty = IN.mcy - dy;
+    return;
+  }
+  // Pinch to zoom
+  if(e.pointerId !== IN.pid){
+    if(IN.p2 && IN.down){
+      IN.p2x = e.clientX; IN.p2y = e.clientY;
+      const dx = IN.p2x - IN.x, dy = IN.p2y - IN.y;
+      const nd = Math.sqrt(dx * dx + dy * dy);
+      if(IN.pD > 0) CAM.tz = cl(IN.pZ * (nd / IN.pD), CFG.ZMIN, CFG.ZMAX);
+    }
+    return;
+  }
+  IN.x = e.clientX; IN.y = e.clientY;
+  if(G.state === GS.PLAY && !G.fly){
+    updAngle(e.clientX, e.clientY);
+  }
+}
+
+function onPU(e){
+  if(e.button === 1 || e.button === 2){ IN.mid = false; return; }
+  if(e.pointerId !== IN.pid){ IN.p2 = false; return; }
+  const wasAiming = IN.aiming;
+  IN.down = false; IN.aiming = false; IN.p2 = false; IN.panActive = false;
+
+  // Launch balls on pointer release if in play state and not flying
+  if(G.state === GS.PLAY && wasAiming && !G.fly){
+    launchBalls();
+  }
+}
+
+function onWH(e){
+  e.preventDefault();
+  CAM.tz = cl(CAM.tz * (e.deltaY > 0 ? 0.88 : 1.14), CFG.ZMIN, CFG.ZMAX);
+}
+
+function onKD(e){
+  IN.keys[e.code] = true;
+  if(e.code === 'F3'){ e.preventDefault(); togDbg(); }
+  if(e.code === 'F1'){ e.preventDefault(); DBG = !DBG; }
+  if(e.code === 'F2' && DBG){ e.preventDefault(); regenLv(); }
+  if(e.code === 'F4' && DBG){ e.preventDefault(); SV.cur += 10000; G.bits += 10000; updHUD(); }
+  if(e.code === 'F5' && DBG){ e.preventDefault(); dbgUnlock(); }
+  if(e.code === 'F6' && DBG){ e.preventDefault(); dbgDestRand(300); }
+  if(e.code === 'F7' && DBG){ e.preventDefault(); dbgBalls(); }
+  if(e.code === 'Escape'){
+    if(G.state === GS.PLAY) _pause();
+    else if(G.state === GS.PAUSE) _resume();
+    else _closeOv();
+  }
+  if(e.code === 'Space' && G.state === GS.PLAY && !G.fly){
+    e.preventDefault(); launchBalls();
+  }
+  if(e.code === 'KeyR' && G.state === GS.PLAY && G.fly){
+    e.preventDefault(); _recallBalls();
+  }
+  if(e.code === 'KeyM') SV.mute = !SV.mute;
+}
+
+function updAngle(sx, sy){
+  const ls = w2s(G.lx, G.ly);
+  const dx = sx - ls.x, dy = sy - ls.y;
+  IN.angle = cl(Math.atan2(dy, dx), -Math.PI + 0.12, -0.12);
+}
+
+// ═══════════════════════════════════════════════════════════
+// §6 CAMERA SYSTEM (WORLD, SCREEN, GRID)
+// ═══════════════════════════════════════════════════════════
+const CAM = { x:0, y:0, tx:0, ty:0, z:1, tz:1, vw:800, vh:600 };
+function initCam(){
+  CAM.vw = CW; CAM.vh = CH;
+  const ww = CFG.GW * CFG.PS, wh = (CFG.GH + 14) * CFG.PS;
+  const fz = Math.min(CW / ww, CH / wh) * 0.88;
+  CAM.z = CAM.tz = fz;
+  CAM.x = CAM.tx = ww / 2 - CW / (2 * fz);
+  CAM.y = CAM.ty = (wh * 0.46) - CH / (2 * fz);
+}
+function updCam(dt){
+  const ps = CFG.PS * 75 * dt / CAM.z;
+  if(IN.keys['KeyW'] || IN.keys['ArrowUp']) CAM.ty -= ps;
+  if(IN.keys['KeyS'] || IN.keys['ArrowDown']) CAM.ty += ps;
+  if(IN.keys['KeyA'] || IN.keys['ArrowLeft']) CAM.tx -= ps;
+  if(IN.keys['KeyD'] || IN.keys['ArrowRight']) CAM.tx += ps;
+
+  CAM.z = lerp(CAM.z, CAM.tz, 0.14);
+  CAM.x = lerp(CAM.x, CAM.tx, 0.12);
+  CAM.y = lerp(CAM.y, CAM.ty, 0.12);
+
+  const ww = CFG.GW * CFG.PS, wh = (CFG.GH + 18) * CFG.PS;
+  const vw = CW / CAM.z, vh = CH / CAM.z;
+  CAM.tx = cl(CAM.tx, -vw * 0.25, ww - vw * 0.75);
+  CAM.ty = cl(CAM.ty, -vh * 0.25, wh - vh * 0.75);
+}
+
+function w2s(wx, wy){ return { x: (wx - CAM.x) * CAM.z, y: (wy - CAM.y) * CAM.z }; }
+function s2w(sx, sy){ return { x: sx / CAM.z + CAM.x, y: sy / CAM.z + CAM.y }; }
+function w2g(wx, wy){ return { x: (wx / CFG.PS) | 0, y: (wy / CFG.PS) | 0 }; }
+function g2w(gx, gy){ return { x: gx * CFG.PS, y: gy * CFG.PS }; }
+
+const WW = CFG.GW * CFG.PS, WH = CFG.GH * CFG.PS;
+
+// ═══════════════════════════════════════════════════════════
+// §7 PIXEL GRID (FLAT TYPED ARRAYS & CHUNKS)
+// ═══════════════════════════════════════════════════════════
+const GW2 = CFG.GW, GH2 = CFG.GH, GT = GW2 * GH2;
+const CKS = CFG.CHUNK, CKW = Math.ceil(GW2 / CKS), CKH = Math.ceil(GH2 / CKS);
+
+let pT = new Uint8Array(GT);   // Pixel Type
+let pH = new Uint8Array(GT);   // Pixel Health
+let pC = new Uint8Array(GT);   // Palette Color index
+let pF = new Uint8Array(GT);   // Flags
+let pTm = new Uint16Array(GT); // Effect countdown
+let pHF = new Uint32Array(GT); // Hit frame collision tag
+let ckD = new Uint8Array(CKW * CKH);
+
+let offC = null, offX = null, idat = null, ibuf = null;
+let pxA = 0, pxD = 0, CF2 = 0;
+
+function initGrid(){
+  pT.fill(0); pH.fill(0); pC.fill(0); pF.fill(0); pTm.fill(0); pHF.fill(0);
+  ckD.fill(1);
+  offC = document.createElement('canvas');
+  offC.width = GW2; offC.height = GH2;
+  offX = offC.getContext('2d');
+  idat = offX.createImageData(GW2, GH2);
+  ibuf = new Uint32Array(idat.data.buffer);
+  clearGrid();
+}
+function clearGrid(){
+  pT.fill(0); pH.fill(0); pC.fill(0); pF.fill(0); pTm.fill(0);
+  ckD.fill(1); pxA = 0; pxD = 0;
+  const bg = PAL[0];
+  ibuf.fill((255 << 24) | (bg[2] << 16) | (bg[1] << 8) | bg[0]);
+}
+function setPx(gx, gy, tp, hp = -1){
+  if(gx < 0 || gx >= GW2 || gy < 0 || gy >= GH2) return;
+  const i = gy * GW2 + gx, op = pT[i];
+  pT[i] = tp;
+  pH[i] = hp < 0 ? PT_HP[tp] : hp;
+  pF[i] = 0; pTm[i] = 0;
+  pC[i] = TC[tp][0];
+  dkCk(gx, gy);
+  if(tp !== PT.E && op === PT.E) pxA++;
+  else if(tp === PT.E && op !== PT.E) pxA--;
+}
+function getPx(gx, gy){
+  if(gx < 0 || gx >= GW2 || gy < 0 || gy >= GH2) return PT.E;
+  return pT[gy * GW2 + gx];
+}
+function dkCk(gx, gy){
+  const cx = (gx / CKS) | 0, cy = (gy / CKS) | 0;
+  if(cx >= 0 && cx < CKW && cy >= 0 && cy < CKH) ckD[cy * CKW + cx] = 1;
+}
+function dmgPx(i, d){
+  if(pT[i] === PT.E) return false;
+  pH[i] = Math.max(0, pH[i] - d);
+  pF[i] |= FLG_D;
+  const tc = TC[pT[i]];
+  pC[i] = tc[1] || tc[0];
+  dkCk(i % GW2, (i / GW2) | 0);
+  return pH[i] <= 0;
+}
+
+// ═══════════════════════════════════════════════════════════
+// §8 DESTRUCTION QUEUE & CELLULAR FALLING-SAND
+// ═══════════════════════════════════════════════════════════
+const DQ = new Int32Array(120000); let DQH = 0, DQT = 0;
+const FQ = new Int32Array(40000); let FQN = 0;
+const PQ = new Int32Array(10000); let PQN = 0;
+
+function qD(i){
+  if(pT[i] === PT.E) return;
+  DQ[DQT] = i; DQT = (DQT + 1) % DQ.length;
+}
+function qF(gx, gy){
+  if(gx < 0 || gx >= GW2 || gy < 0 || gy >= GH2) return;
+  const i = gy * GW2 + gx;
+  if(pT[i] === PT.E || pT[i] === PT.C || pT[i] === PT.A) return;
+  if(FQN < FQ.length - 1) FQ[FQN++] = i;
+}
+
+function procDQ(){
+  let bud = CFG.DEST_BUD;
+  while(DQH !== DQT && bud-- > 0){
+    const i = DQ[DQH]; DQH = (DQH + 1) % DQ.length;
+    if(pT[i] === PT.E) continue;
+    const gx = i % GW2, gy = (i / GW2) | 0, t = pT[i];
+
+    pxD++; pxA--; G.runPx++; SV.sts.px++;
+    const lm = Math.pow(CFG.BITS_CURVE, G.level - 1);
+    const magBonus = getEff('magnet') ? 1.25 : 1.0;
+    const bits = Math.ceil(PT_BITS[t] * Math.max(1, G.combo) * lm * getEff('bpx') * magBonus) | 0;
+
+    G.bits += bits; G.runBits += bits; SV.cur += bits; SV.lbits += bits; SV.sts.bits += bits;
+    if(bits > 0 && Math.random() < 0.35){
+      spawnFT(gx * CFG.PS + CFG.PS / 2, gy * CFG.PS, '+' + fmt(bits), 'bits');
+    }
+
+    G.comboN++; G.comboT = CFG.COMBO_DEC; updCombo();
+
+    // Special pixel destructions
+    if(t === PT.X) trigExpl(gx, gy);
+    if(t === PT.L){ trigLig(gx, gy, 1); SV.sts.chains++; }
+    if(t === PT.P){ trigPoi(gx, gy); SV.sts.poi++; }
+    if(t === PT.C) handleCore(gx, gy);
+
+    spawnDP(gx, gy, t);
+    SFX.dest(t);
+
+    pT[i] = PT.E; pH[i] = 0; pF[i] = 0; pC[i] = 0;
+    dkCk(gx, gy);
+
+    // Queue upper & diagonal neighbors for falling-sand check
+    qF(gx, gy - 1);
+    qF(gx - 1, gy - 1);
+    qF(gx + 1, gy - 1);
+    qF(gx - 1, gy);
+    qF(gx + 1, gy);
+  }
+}
+
+function procFQ(){
+  for(let i = 0; i < FQN; i++){
+    const i2 = FQ[i];
+    if(pT[i2] === PT.E) continue;
+    const t = pT[i2];
+    if(t === PT.A || t === PT.L || t === PT.C) continue;
+    const gx = i2 % GW2, gy = (i2 / GW2) | 0;
+
+    if(gy + 1 < GH2){
+      const bi = (gy + 1) * GW2 + gx;
+      // Direct fall down
+      if(pT[bi] === PT.E){
+        pT[bi] = pT[i2]; pH[bi] = pH[i2]; pC[bi] = pC[i2]; pF[bi] = pF[i2];
+        pT[i2] = PT.E; pH[i2] = 0; pC[i2] = 0; pF[i2] = 0;
+        dkCk(gx, gy); dkCk(gx, gy + 1);
+        qF(gx, gy + 1);
+        if(Math.random() < 0.08) spawnDust(gx, gy + 1);
+        continue;
+      }
+      // Diagonal sand slide (down-left / down-right)
+      const leftEmpty = gx > 0 && pT[(gy + 1) * GW2 + (gx - 1)] === PT.E && pT[gy * GW2 + (gx - 1)] === PT.E;
+      const rightEmpty = gx < GW2 - 1 && pT[(gy + 1) * GW2 + (gx + 1)] === PT.E && pT[gy * GW2 + (gx + 1)] === PT.E;
+
+      if(leftEmpty || rightEmpty){
+        const dir = (leftEmpty && rightEmpty) ? (Math.random() < 0.5 ? -1 : 1) : (leftEmpty ? -1 : 1);
+        const di = (gy + 1) * GW2 + (gx + dir);
+        pT[di] = pT[i2]; pH[di] = pH[i2]; pC[di] = pC[i2]; pF[di] = pF[i2];
+        pT[i2] = PT.E; pH[i2] = 0; pC[i2] = 0; pF[i2] = 0;
+        dkCk(gx, gy); dkCk(gx + dir, gy + 1);
+        qF(gx + dir, gy + 1);
+        if(Math.random() < 0.08) spawnDust(gx + dir, gy + 1);
+      }
+    }
+  }
+  FQN = 0;
+}
+
+// ═══════════════════════════════════════════════════════════
+// §9 PROCEDURAL LEVEL GENERATION (8 FORMATION TYPES)
+// ═══════════════════════════════════════════════════════════
+let LR = null;
+function genLv(lvl, seed){
+  clearGrid();
+  G.cgx = G.cgy = -1;
+  G.coreF = false;
+  LR = mkRng(seed ^ (lvl * 0x9E3779B9));
+
+  const den = Math.min(0.92, 0.42 + lvl * 0.038);
+  const hC = Math.min(0.44, lvl * 0.045);
+  const aC = Math.max(0, Math.min(0.24, (lvl - 2) * 0.025));
+  const xC = Math.max(0, Math.min(0.15, (lvl - 1) * 0.016));
+  const eC = Math.max(0, Math.min(0.12, (lvl - 2) * 0.014));
+  const pC2 = Math.max(0, Math.min(0.10, (lvl - 3) * 0.012));
+
+  const fW = Math.min(GW2 - 36, 75 + lvl * 18) | 0;
+  const fH = Math.min(GH2 - 70, 60 + lvl * 12) | 0;
+
+  const avail = [0, 1, 2, 3, 4, 5, 6, 7].slice(0, Math.min(lvl + 2, 8));
+  const ft = avail[LR.ni(0, avail.length - 1)];
+  G.ft = ft;
+  document.getElementById('hfm').textContent = FTL[ft];
+
+  const mask = new Uint8Array(fW * fH);
+  genFm(ft, mask, fW, fH, lvl);
+
+  const sgx = (GW2 / 2 - fW / 2) | 0, sgy = (GH2 * 0.38 - fH / 2) | 0;
+
+  for(let fy = 0; fy < fH; fy++){
+    for(let fx = 0; fx < fW; fx++){
+      if(!mask[fy * fW + fx]) continue;
+      const gx = sgx + fx, gy = sgy + fy;
+      if(gx < 0 || gx >= GW2 || gy < 0 || gy >= GH2) continue;
+      if(LR.nx() > den) continue;
+      const r = LR.nx();
+      let t = PT.N;
+      if(r < pC2 && lvl >= 4) t = PT.P;
+      else if(r < pC2 + eC && lvl >= 3) t = PT.L;
+      else if(r < pC2 + eC + xC && lvl >= 2) t = PT.X;
+      else if(r < pC2 + eC + xC + aC && lvl >= 3) t = PT.A;
+      else if(r < pC2 + eC + xC + aC + hC) t = PT.H;
+      setPx(gx, gy, t);
+    }
+  }
+
+  placeCore(sgx, sgy, fW, fH);
+
+  pxA = 0;
+  for(let i = 0; i < GT; i++) if(pT[i] !== PT.E) pxA++;
+  G.lvPx = pxA;
+}
+
+function genFm(tp, mask, w, h, lvl){
+  switch(tp){
+    case 0: gGlyph(mask, w, h); break;
+    case 1: gMono(mask, w, h); break;
+    case 2: gRing(mask, w, h); break;
+    case 3: gSpiral(mask, w, h); break;
+    case 4: gGeo(mask, w, h); break;
+    case 5: gOrg(mask, w, h); break;
+    case 6: gFrac(mask, w, h); break;
+    case 7: gComp(mask, w, h, lvl); break;
+  }
+}
+
+function dPx(m, w, h, x, y){ if(x >= 0 && x < w && y >= 0 && y < h) m[y * w + x] = 1; }
+function dCirc(m, w, h, cx, cy, r){
+  const r2 = r * r;
+  for(let dy = -r; dy <= r; dy++)
+    for(let dx = -r; dx <= r; dx++)
+      if(dx * dx + dy * dy <= r2) dPx(m, w, h, cx + dx, cy + dy);
+}
+function dLine(m, w, h, x1, y1, x2, y2, th){
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy) || 1;
+  const st = Math.ceil(len);
+  for(let i = 0; i <= st; i++){
+    const t = i / st;
+    dCirc(m, w, h, (x1 + dx * t) | 0, (y1 + dy * t) | 0, th);
+  }
+}
+function dRect(m, w, h, rx, ry, rw, rh){
+  for(let y = ry; y < ry + rh; y++)
+    for(let x = rx; x < rx + rw; x++) dPx(m, w, h, x, y);
+}
+function cCirc(m, w, h, cx, cy, r){
+  const r2 = r * r;
+  for(let dy = -r; dy <= r; dy++)
+    for(let dx = -r; dx <= r; dx++)
+      if(dx * dx + dy * dy <= r2){
+        const px = cx + dx, py = cy + dy;
+        if(px >= 0 && px < w && py >= 0 && py < h) m[py * w + px] = 0;
+      }
+}
+function cLine(m, w, h, x1, y1, x2, y2, th){
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy) || 1;
+  const st = Math.ceil(len);
+  for(let i = 0; i <= st; i++){
+    const t = i / st;
+    cCirc(m, w, h, (x1 + dx * t) | 0, (y1 + dy * t) | 0, th);
+  }
+}
+function dPoly(m, w, h, cx, cy, s, r, rot, th){
+  for(let i = 0; i < s; i++){
+    const a1 = rot + (i / s) * Math.PI * 2, a2 = rot + ((i + 1) / s) * Math.PI * 2;
+    dLine(m, w, h, (cx + Math.cos(a1) * r) | 0, (cy + Math.sin(a1) * r) | 0, (cx + Math.cos(a2) * r) | 0, (cy + Math.sin(a2) * r) | 0, th);
+  }
+}
+
+function gGlyph(m, w, h){
+  const cx = w >> 1, cy = h >> 1, th = Math.max(3, (Math.min(w, h) / 11) | 0), s = LR.ni(4, 9);
+  for(let i = 0; i < s; i++){
+    const a = (i / s) * Math.PI * 2 + LR.nx() * 0.5, r1 = LR.nx() * 0.28 + 0.08, r2 = LR.nx() * 0.38 + 0.26;
+    dLine(m, w, h, (cx + Math.cos(a) * w * r1) | 0, (cy + Math.sin(a) * h * r1) | 0, (cx + Math.cos(a + Math.PI) * w * r2) | 0, (cy + Math.sin(a + Math.PI) * h * r2) | 0, th);
+  }
+  for(let i = 0, n = LR.ni(2, 5); i < n; i++) dCirc(m, w, h, LR.ni(w * 0.18, w * 0.82) | 0, LR.ni(h * 0.18, h * 0.82) | 0, LR.ni(4, 10));
+}
+function gMono(m, w, h){
+  const pw = Math.max(10, (w * 0.32) | 0), px = ((w - pw) / 2) | 0;
+  dRect(m, w, h, px, 0, pw, h);
+  for(let i = 0, n = LR.ni(3, 6); i < n; i++){
+    const by = LR.ni(0, h - 8), bh = LR.ni(3, 8), bw = Math.min(w, pw + LR.ni(6, 22));
+    dRect(m, w, h, ((w - bw) / 2) | 0, by, bw, bh);
+  }
+  const tw = pw + LR.ni(10, 26), th2 = LR.ni(8, 20);
+  dRect(m, w, h, ((w - tw) / 2) | 0, 0, tw, th2);
+  dRect(m, w, h, ((w - tw) / 2) | 0, h - th2, tw, th2);
+}
+function gRing(m, w, h){
+  const cx = w >> 1, cy = h >> 1, rn = LR.ni(1, 4);
+  for(let r = 0; r < rn; r++){
+    const fr = (r + 1) / (rn + 0.5), rx = (w * fr * 0.44) | 0, ry = (h * fr * 0.44) | 0, th = LR.ni(3, 8);
+    for(let a = 0; a < 360; a += 2){
+      const rad = a * Math.PI / 180;
+      dCirc(m, w, h, (cx + Math.cos(rad) * rx) | 0, (cy + Math.sin(rad) * ry) | 0, th);
+    }
+  }
+  if(LR.nb(0.7)) dCirc(m, w, h, cx, cy, LR.ni(4, 14));
+}
+function gSpiral(m, w, h){
+  const cx = w >> 1, cy = h >> 1, turns = LR.nx() * 2 + 1.4, th = LR.ni(4, 9);
+  for(let i = 0; i < 700; i++){
+    const t = i / 700, a = t * turns * Math.PI * 2, r = t * Math.min(w, h) * 0.43;
+    dCirc(m, w, h, (cx + Math.cos(a) * r) | 0, (cy + Math.sin(a) * r) | 0, th);
+  }
+}
+function gGeo(m, w, h){
+  const cx = w >> 1, cy = h >> 1, sh = LR.ni(0, 4);
+  if(sh === 0) dPoly(m, w, h, cx, cy, 4, Math.min(w, h) * 0.42, Math.PI / 4, LR.ni(4, 9));
+  else if(sh === 1) dPoly(m, w, h, cx, cy, 6, Math.min(w, h) * 0.42, 0, LR.ni(4, 9));
+  else if(sh === 2){
+    const co = LR.ni(3, 7), ro = LR.ni(2, 5), cw2 = (w / co) | 0, ch2 = (h / ro) | 0, g2 = LR.ni(2, 4);
+    for(let r = 0; r < ro; r++)
+      for(let c = 0; c < co; c++)
+        dRect(m, w, h, c * cw2 + g2, r * ch2 + g2, cw2 - g2 * 2, ch2 - g2 * 2);
+  }
+  else if(sh === 3){
+    const p = LR.ni(4, 8);
+    for(let i = 0; i < p * 2; i++){
+      const a = (i / (p * 2)) * Math.PI * 2 - Math.PI / 2;
+      const r2 = i % 2 === 0 ? Math.min(w, h) * 0.43 : Math.min(w, h) * 0.18;
+      const na = ((i + 1) / (p * 2)) * Math.PI * 2 - Math.PI / 2;
+      const nr = ((i + 1) % 2 === 0) ? Math.min(w, h) * 0.43 : Math.min(w, h) * 0.18;
+      dLine(m, w, h, (cx + Math.cos(a) * r2) | 0, (cy + Math.sin(a) * r2) | 0, (cx + Math.cos(na) * nr) | 0, (cy + Math.sin(na) * nr) | 0, LR.ni(3, 7));
+    }
+  }
+  else dPoly(m, w, h, cx, cy, 3, Math.min(w, h) * 0.43, -Math.PI / 2, LR.ni(5, 11));
+}
+function gOrg(m, w, h){
+  const sc = 0.1;
+  for(let y = 0; y < h; y++)
+    for(let x = 0; x < w; x++){
+      const v = n2(x * sc, y * sc);
+      const dx = (x - w / 2) / (w / 2), dy = (y - h / 2) / (h / 2);
+      if(v > 0.44 && dx * dx + dy * dy < 0.88) m[y * w + x] = 1;
+    }
+}
+function gFrac(m, w, h){
+  m.fill(1);
+  for(let y = 0; y < h; y++)
+    for(let x = 0; x < w; x++){
+      const dx = (x - w / 2) / (w / 2), dy = (y - h / 2) / (h / 2);
+      if(dx * dx + dy * dy > 0.84) m[y * w + x] = 0;
+    }
+  for(let i = 0, n = LR.ni(4, 12); i < n; i++)
+    cLine(m, w, h, LR.ni(0, w), LR.ni(0, h), LR.ni(0, w), LR.ni(0, h), LR.ni(3, 10));
+}
+function gComp(m, w, h, lvl){
+  const parts = LR.ni(2, Math.min(4, 2 + (lvl >> 1)));
+  for(let p = 0; p < parts; p++){
+    const st = [0, 2, 3, 4][LR.ni(0, 3)];
+    const sw = ((w * (0.4 + LR.nx() * 0.3)) | 0), sh2 = ((h * (0.4 + LR.nx() * 0.3)) | 0);
+    const sm = new Uint8Array(sw * sh2);
+    genFm(st, sm, sw, sh2, lvl);
+    const ox = LR.ni(0, w - sw), oy = LR.ni(0, h - sh2);
+    for(let sy = 0; sy < sh2; sy++)
+      for(let sx = 0; sx < sw; sx++)
+        if(sm[sy * sw + sx] && ox + sx < w && oy + sy < h)
+          m[(oy + sy) * w + (ox + sx)] = 1;
+  }
+}
+
+function placeCore(sgx, sgy, fw, fh){
+  const cx = (sgx + fw / 2) | 0, cy = (sgy + fh / 2) | 0;
+  for(let rad = 3; rad < Math.max(fw, fh); rad++){
+    for(let t = 0; t < 22; t++){
+      const a = LR.nx() * Math.PI * 2;
+      const rx = (cx + Math.cos(a) * rad * 0.78) | 0;
+      const ry = (cy + Math.sin(a) * rad * 0.78) | 0;
+      if(rx < 0 || rx >= GW2 || ry < 0 || ry >= GH2) continue;
+      const i = ry * GW2 + rx;
+      if(pT[i] === PT.E) continue;
+      let surr = 0;
+      for(let dy = -2; dy <= 2; dy++)
+        for(let dx = -2; dx <= 2; dx++){
+          const nx = rx + dx, ny = ry + dy;
+          if(nx >= 0 && nx < GW2 && ny >= 0 && ny < GH2 && pT[ny * GW2 + nx] !== PT.E) surr++;
+        }
+      if(surr >= 14){
+        setPx(rx, ry, PT.C, PT_HP[PT.C]);
+        G.cgx = rx; G.cgy = ry;
+        return;
+      }
+    }
+  }
+  // Fallback if interior cavity not found
+  for(let fy = 0; fy < fh; fy++)
+    for(let fx = 0; fx < fw; fx++){
+      const gx = sgx + fx, gy = sgy + fy;
+      if(gx < 0 || gx >= GW2 || gy < 0 || gy >= GH2) continue;
+      if(pT[gy * GW2 + gx] !== PT.E){
+        setPx(gx, gy, PT.C, PT_HP[PT.C]);
+        G.cgx = gx; G.cgy = gy;
+        return;
+      }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+// §10 BALL SYSTEM & COLLISION DYNAMICS
+// ═══════════════════════════════════════════════════════════
+const MB = CFG.MAX_BALLS;
+let bX = new Float32Array(MB), bY = new Float32Array(MB);
+let bVX = new Float32Array(MB), bVY = new Float32Array(MB);
+let bR2 = new Float32Array(MB), bD2 = new Float32Array(MB);
+let bTp = new Uint8Array(MB), bAc = new Uint8Array(MB);
+let bCnt = 0;
+
+function clrBalls(){ bAc.fill(0); bCnt = 0; }
+function spawnBall(x, y, vx, vy, tp, r, d){
+  for(let i = 0; i < MB; i++){
+    if(!bAc[i]){
+      bX[i] = x; bY[i] = y; bVX[i] = vx; bVY[i] = vy;
+      bR2[i] = r; bD2[i] = d; bTp[i] = tp; bAc[i] = 1;
+      bCnt++; return i;
+    }
+  }
+  return -1;
+}
+function rmBall(i){ if(bAc[i]){ bAc[i] = 0; bCnt--; } }
+
+function updBalls(dt){
+  CF2++;
+  const recallActive = G.recalling;
+
+  for(let i = 0; i < MB; i++){
+    if(!bAc[i]) continue;
+
+    // Instant recall pull downward
+    if(recallActive){
+      bVY[i] += 1200 * dt;
+      bVX[i] *= 0.95;
+    }
+
+    const spd = Math.sqrt(bVX[i] * bVX[i] + bVY[i] * bVY[i]);
+    const sub = cl(Math.ceil(spd * dt / (bR2[i] * 0.5)), 1, CFG.MAX_SUB);
+    const sdt = dt / sub;
+
+    for(let s = 0; s < sub; s++){
+      let sp2 = Math.sqrt(bVX[i] * bVX[i] + bVY[i] * bVY[i]);
+      if(sp2 < CFG.MIN_SPD && !recallActive){
+        const nm = CFG.MIN_SPD / (sp2 || 1);
+        bVX[i] *= nm; bVY[i] *= nm; sp2 = CFG.MIN_SPD;
+      }
+      if(Math.abs(bVY[i]) < sp2 * CFG.MIN_VY && !recallActive){
+        bVY[i] = (bVY[i] < 0 ? -1 : 1) * sp2 * CFG.MIN_VY;
+      }
+
+      bX[i] += bVX[i] * sdt;
+      bY[i] += bVY[i] * sdt;
+      const r = bR2[i];
+
+      // Screen boundary bounces
+      if(bX[i] - r < 0){ bX[i] = r; bVX[i] = Math.abs(bVX[i]); SFX.bounce(); shk(0.5); }
+      if(bX[i] + r > WW){ bX[i] = WW - r; bVX[i] = -Math.abs(bVX[i]); SFX.bounce(); shk(0.5); }
+      if(bY[i] - r < 0){ bY[i] = r; bVY[i] = Math.abs(bVY[i]); SFX.bounce(); shk(0.5); }
+      if(bY[i] - r > WH + 80){ rmBall(i); break; }
+
+      // Pixel arena collision
+      if(bY[i] - r < WH) doColl(i);
+    }
+  }
+
+  // Core proximity radar tracking
+  if(G.cgx >= 0 && G.cgy >= 0 && pT[G.cgy * GW2 + G.cgx] === PT.C){
+    const cwx = G.cgx * CFG.PS + CFG.PS / 2, cwy = G.cgy * CFG.PS + CFG.PS / 2;
+    let closestDist = Infinity;
+    for(let i = 0; i < MB; i++){
+      if(!bAc[i]) continue;
+      const d = Math.hypot(bX[i] - cwx, bY[i] - cwy);
+      if(d < closestDist) closestDist = d;
+    }
+    G.coreDist = closestDist;
+    if(closestDist < 120 && Math.random() < 0.05){
+      SFX.coreProximity();
+      spawnPt(cwx, cwy, (Math.random() - 0.5) * 40, (Math.random() - 0.5) * 40, 0.6, 2.5, 255, 215, 0, 3);
+    }
+  }
+}
+
+function doColl(bi){
+  const cx = bX[bi], cy = bY[bi], r = bR2[bi], dmg = bD2[bi], tp = bTp[bi];
+  const PS = CFG.PS;
+  const mnX = Math.max(0, ((cx - r) / PS - 1) | 0), mxX = Math.min(GW2 - 1, ((cx + r) / PS + 1) | 0);
+  const mnY = Math.max(0, ((cy - r) / PS - 1) | 0), mxY = Math.min(GH2 - 1, ((cy + r) / PS + 1) | 0);
+
+  let hits = 0, bnx = 0, bny = 0, bpen = 0;
+  let hitHardOrArmored = false;
+
+  for(let gy = mnY; gy <= mxY; gy++){
+    for(let gx = mnX; gx <= mxX; gx++){
+      const idx = gy * GW2 + gx;
+      if(pT[idx] === PT.E) continue;
+      const px = gx * PS, py = gy * PS;
+      const clx = cl(cx, px, px + PS), cly = cl(cy, py, py + PS);
+      const dx = cx - clx, dy = cy - cly, d2 = dx * dx + dy * dy;
+      if(d2 > r * r) continue;
+
+      const d = Math.sqrt(d2);
+      const nx = d > 0.001 ? dx / d : 0, ny = d > 0.001 ? dy / d : -1;
+
+      if(pHF[idx] === CF2) continue;
+      pHF[idx] = CF2;
+
+      const currentHp = pH[idx];
+      const currentType = pT[idx];
+
+      // Special handling for LASER ORB (cuts straight through 1-HP pixels without stopping)
+      if(tp === PROJ.R && currentHp <= 1 && currentType !== PT.C){
+        const dest = dmgPx(idx, 1);
+        if(dest) qD(idx);
+        spawnLaserCut(gx, gy);
+        hits++;
+        continue;
+      }
+
+      if(currentHp > 1 || currentType === PT.A || currentType === PT.H || currentType === PT.C){
+        hitHardOrArmored = true;
+      }
+
+      let ad = dmg;
+      let isCrit = Math.random() < getEff('crit');
+      if(isCrit){
+        ad *= 2;
+        spawnFT(gx * PS + PS / 2, gy * PS, 'CRIT!', 'crit');
+      }
+
+      // Explosion Chance perk
+      if(Math.random() < getEff('explCh')){
+        trigExpl(gx, gy);
+      }
+
+      // Projectile Type onHit perks
+      if(tp === PROJ.L){
+        trigLig(gx, gy, 1);
+      } else if(tp === PROJ.P){
+        trigPoi(gx, gy);
+      } else if(tp === PROJ.K){
+        // Kinetic shockwave ring
+        if(Math.random() < 0.35) addShockwave(cx, cy, 22);
+      }
+
+      const dest = dmgPx(idx, ad);
+      if(dest){
+        qD(idx);
+      } else {
+        SFX.hit(currentType);
+        spawnHP(gx, gy);
+      }
+
+      hits++;
+      const pen = r - d;
+      if(pen > bpen){ bpen = pen; bnx = nx; bny = ny; }
+    }
+  }
+
+  // Reflection resolution
+  if(hits > 0 && bpen > 0){
+    // Laser only reflects if hitting hard/armored pixels or walls
+    if(tp === PROJ.R && !hitHardOrArmored){
+      // continue straight through
+    } else {
+      bX[bi] += bnx * bpen;
+      bY[bi] += bny * bpen;
+      const dot = bVX[bi] * bnx + bVY[bi] * bny;
+      if(dot < 0){
+        const be = getEff('beff');
+        bVX[bi] = (bVX[bi] - 2 * dot * bnx) * be;
+        bVY[bi] = (bVY[bi] - 2 * dot * bny) * be;
+      }
+      shk(hits > 2 ? 1.8 : 0.9);
+    }
+  }
+}
+
+function allLnd(){
+  for(let i = 0; i < MB; i++) if(bAc[i]) return false;
+  return true;
+}
+
+function launchBalls(){
+  if(G.fly) return;
+  resumeAC();
+  SFX.launch();
+
+  const n = (getEff('bcnt')) | 0;
+  const spd = CFG.SPD * getEff('bspd');
+  const rad = CFG.RAD * getEff('brad');
+  const dmg = CFG.DMG * getEff('bdmg');
+  const base = IN.angle;
+
+  for(let b = 0; b < n; b++){
+    let a = base;
+    if(n > 1) a = base + (b / (n - 1) - 0.5) * 0.14 * (n - 1);
+    spawnBall(G.lx, G.ly, Math.cos(a) * spd, Math.sin(a) * spd, G.orb, rad, dmg);
+  }
+
+  G.fly = true;
+  G.recalling = false;
+  SV.sts.balls += n;
+  shk(1.5);
+  document.getElementById('recall-btn').style.display = 'inline-flex';
+}
+
+function _recallBalls(){
+  if(!G.fly) return;
+  G.recalling = true;
+}
+
+// ═══════════════════════════════════════════════════════════
+// §11 PROJECTILE EFFECTS & SPECIAL INTERACTIONS
+// ═══════════════════════════════════════════════════════════
+const LQ2 = new Int32Array(512), LC2 = new Int32Array(128);
+
+function trigLig(gx, gy, dmg = 1){
+  const ch = CFG.CHAIN_BASE + (getEff('chnN') | 0);
+  const r2 = CFG.CHAIN_RNG * CFG.CHAIN_RNG;
+  const gr = (CFG.CHAIN_RNG / CFG.PS) | 0;
+  let qh = 0, qt = 0;
+  LQ2[qt++] = gy * GW2 + gx;
+  let done = 0;
+
+  while(qh < qt && done < ch){
+    const si = LQ2[qh++];
+    const sx = si % GW2, sy = (si / GW2) | 0;
+    let cn = 0;
+    const mx2 = Math.max(0, sx - gr), xx = Math.min(GW2 - 1, sx + gr);
+    const my2 = Math.max(0, sy - gr), xy = Math.min(GH2 - 1, sy + gr);
+
+    for(let ny = my2; ny <= xy && cn < 32; ny++)
+      for(let nx = mx2; nx <= xx && cn < 32; nx++){
+        const ni = ny * GW2 + nx;
+        if(ni === si || pT[ni] === PT.E) continue;
+        const dwx = (nx - sx) * CFG.PS, dwy = (ny - sy) * CFG.PS;
+        if(dwx * dwx + dwy * dwy <= r2) LC2[cn++] = ni;
+      }
+
+    if(cn === 0) continue;
+    const tg = Math.min(2, cn);
+    for(let t = 0; t < tg && done < ch; t++){
+      const pick = (Math.random() * cn) | 0;
+      const ti = LC2[pick];
+      if(pT[ti] === PT.E) continue;
+      const tx = ti % GW2, ty = (ti / GW2) | 0;
+
+      addArc(sx * CFG.PS + CFG.PS / 2, sy * CFG.PS + CFG.PS / 2, tx * CFG.PS + CFG.PS / 2, ty * CFG.PS + CFG.PS / 2);
+      SFX.lig();
+
+      const dest = dmgPx(ti, dmg);
+      if(dest){
+        qD(ti);
+        if(qt < LQ2.length - 1) LQ2[qt++] = ti;
+      }
+      done++;
+    }
+  }
+}
+
+function trigPoi(gx, gy){
+  const sr = 3 + (getEff('drad') | 0);
+  for(let dy = -sr; dy <= sr; dy++)
+    for(let dx = -sr; dx <= sr; dx++){
+      const nx = gx + dx, ny = gy + dy;
+      if(nx < 0 || nx >= GW2 || ny < 0 || ny >= GH2) continue;
+      const ni = ny * GW2 + nx;
+      if(pT[ni] === PT.E || pT[ni] === PT.C) continue;
+      if(pF[ni] & FLG_P) continue;
+      pF[ni] |= FLG_P;
+      pTm[ni] = (CFG.POI_TICK * 120) | 0;
+      if(PQN < PQ.length - 1) PQ[PQN++] = ni;
+    }
+  SFX.poi();
+  spawnPoiPts(gx, gy);
+}
+
+function updPoi(ticks){
+  let nn = 0;
+  for(let i = 0; i < PQN; i++){
+    const idx = PQ[i];
+    if(pT[idx] === PT.E) continue;
+    if(!(pF[idx] & FLG_P)) continue;
+
+    if(pTm[idx] > 0) pTm[idx] -= ticks;
+    if(pTm[idx] <= 0){
+      pTm[idx] = (CFG.POI_TICK * 120) | 0;
+      const dest = dmgPx(idx, 1);
+      if(dest){
+        qD(idx);
+      } else {
+        const gx2 = idx % GW2, gy2 = (idx / GW2) | 0;
+        const ds = [[-1,0],[1,0],[0,-1],[0,1]];
+        const dr = ds[(Math.random() * 4) | 0];
+        const nx = gx2 + dr[0], ny = gy2 + dr[1];
+        if(nx >= 0 && nx < GW2 && ny >= 0 && ny < GH2){
+          const ni = ny * GW2 + nx;
+          if(pT[ni] !== PT.E && !(pF[ni] & FLG_P)){
+            pF[ni] |= FLG_P;
+            pTm[ni] = (CFG.POI_TICK * 120) | 0;
+            if(PQN < PQ.length - 1) PQ[PQN++] = ni;
+          }
+        }
+        PQ[nn++] = idx;
+      }
+    } else PQ[nn++] = idx;
+  }
+  PQN = nn;
+}
+
+function trigExpl(gx, gy){
+  const rad = 4 + (getEff('drad') | 0);
+  for(let dy = -rad; dy <= rad; dy++)
+    for(let dx = -rad; dx <= rad; dx++){
+      if(dx * dx + dy * dy > rad * rad) continue;
+      const nx = gx + dx, ny = gy + dy;
+      if(nx < 0 || nx >= GW2 || ny < 0 || ny >= GH2) continue;
+      const ni = ny * GW2 + nx;
+      if(pT[ni] === PT.E) continue;
+      const d = dmgPx(ni, 2);
+      if(d) qD(ni);
+    }
+  spawnXPts(gx, gy);
+  addShockwave(gx * CFG.PS + CFG.PS / 2, gy * CFG.PS + CFG.PS / 2, rad * CFG.PS * 1.6);
+  shk(3.5);
+}
+
+function handleCore(gx, gy){
+  G.coreF = true;
+  G.cgx = gx; G.cgy = gy;
+  SFX.coreDest();
+  spawnCorePts(gx, gy);
+  addShockwave(gx * CFG.PS + CFG.PS / 2, gy * CFG.PS + CFG.PS / 2, 70);
+  shk(10);
+
+  // Trigger bullet-time slow-mo effect
+  G.slowMo = 1.3;
+  G.flash = 1.0;
+  G.flashC = [255, 220, 60];
+  SV.sts.cores++;
+
+  showBanner('✦ GOLDEN CORE EXCAVATED! ✦');
+  spawnFT(gx * CFG.PS + CFG.PS / 2, gy * CFG.PS - 20, '✦ CORE EXCAVATED ✦', 'core');
+
+  setTimeout(() => {
+    if(G.state === GS.PLAY) completeLevel();
+  }, 1600);
+}
+
+// ═══════════════════════════════════════════════════════════
+// §12 PARTICLES, ARCS & SHOCKWAVES
+// ═══════════════════════════════════════════════════════════
+const MP = CFG.MAX_PART;
+let pX2 = new Float32Array(MP), pY2 = new Float32Array(MP);
+let pVX2 = new Float32Array(MP), pVY2 = new Float32Array(MP);
+let pLf = new Float32Array(MP), pML = new Float32Array(MP);
+let pSz = new Float32Array(MP);
+let pR2 = new Uint8Array(MP), pG2 = new Uint8Array(MP), pB2 = new Uint8Array(MP);
+let pAc2 = new Uint8Array(MP), pTp2 = new Uint8Array(MP);
+let ptCnt = 0, ptPool = 0;
+
+function spawnPt(x, y, vx, vy, lf, sz, r, g, b, tp = 0){
+  if(SV.set.reduced && Math.random() < 0.72) return;
+  for(let j = 0; j < MP; j++){
+    const sl = (ptPool + j) % MP;
+    if(!pAc2[sl]){
+      pX2[sl] = x; pY2[sl] = y; pVX2[sl] = vx; pVY2[sl] = vy;
+      pLf[sl] = lf; pML[sl] = lf; pSz[sl] = sz;
+      pR2[sl] = r; pG2[sl] = g; pB2[sl] = b;
+      pAc2[sl] = 1; pTp2[sl] = tp;
+      ptPool = (sl + 1) % MP; ptCnt++;
+      return;
+    }
+  }
+}
+
+function updPts(dt){
+  for(let i = 0; i < MP; i++){
+    if(!pAc2[i]) continue;
+    pX2[i] += pVX2[i] * dt;
+    pY2[i] += pVY2[i] * dt;
+    pVY2[i] += 80 * dt;
+    pVX2[i] *= 0.98;
+    pLf[i] -= dt;
+    if(pLf[i] <= 0){ pAc2[i] = 0; ptCnt--; }
+  }
+}
+
+function spawnDP(gx, gy, t){
+  const wx = gx * CFG.PS + CFG.PS / 2, wy = gy * CFG.PS + CFG.PS / 2;
+  const col = PAL[TC[t][0] || 1];
+  const n = t === PT.C ? 28 : (t >= PT.A ? 10 : 4);
+  for(let i = 0; i < n; i++){
+    const a = Math.random() * Math.PI * 2, s = 30 + Math.random() * 120;
+    spawnPt(wx, wy, Math.cos(a) * s, Math.sin(a) * s - 35, 0.35 + Math.random() * 0.5, 1.5 + Math.random() * 3, col[0], col[1], col[2]);
+  }
+}
+function spawnHP(gx, gy){
+  const wx = gx * CFG.PS + CFG.PS / 2, wy = gy * CFG.PS + CFG.PS / 2;
+  for(let i = 0; i < 2; i++){
+    const a = Math.random() * Math.PI * 2;
+    spawnPt(wx, wy, Math.cos(a) * 28, Math.sin(a) * 28 - 20, 0.15, 1.2, 210, 230, 255);
+  }
+}
+function spawnLaserCut(gx, gy){
+  const wx = gx * CFG.PS + CFG.PS / 2, wy = gy * CFG.PS + CFG.PS / 2;
+  for(let i = 0; i < 3; i++){
+    const a = Math.random() * Math.PI * 2, s = 20 + Math.random() * 60;
+    spawnPt(wx, wy, Math.cos(a) * s, Math.sin(a) * s, 0.25, 2, 255, 60, 80, 1);
+  }
+}
+function spawnPoiPts(gx, gy){
+  const wx = gx * CFG.PS + CFG.PS / 2, wy = gy * CFG.PS + CFG.PS / 2;
+  for(let i = 0; i < 8; i++){
+    const a = Math.random() * Math.PI * 2;
+    spawnPt(wx, wy, Math.cos(a) * 48, Math.sin(a) * 48 - 25, 0.55 + Math.random() * 0.4, 2.2, 45, 225, 80, 2);
+  }
+}
+function spawnXPts(gx, gy){
+  const wx = gx * CFG.PS + CFG.PS / 2, wy = gy * CFG.PS + CFG.PS / 2;
+  for(let i = 0; i < 16; i++){
+    const a = (i / 16) * Math.PI * 2, s = 60 + Math.random() * 150;
+    spawnPt(wx, wy, Math.cos(a) * s, Math.sin(a) * s - 55, 0.4 + Math.random() * 0.4, 2.5 + Math.random() * 4, 245, 95, 25);
+  }
+}
+function spawnCorePts(gx, gy){
+  const wx = gx * CFG.PS + CFG.PS / 2, wy = gy * CFG.PS + CFG.PS / 2;
+  for(let i = 0; i < 44; i++){
+    const a = (i / 44) * Math.PI * 2 + Math.random() * 0.4, s = 70 + Math.random() * 200;
+    spawnPt(wx, wy, Math.cos(a) * s, Math.sin(a) * s - 75, 0.75 + Math.random() * 0.8, 2.5 + Math.random() * 5, 255, (200 + Math.random() * 55) | 0, 0);
+  }
+  for(let i = 0; i < 20; i++){
+    const a = Math.random() * Math.PI * 2;
+    spawnPt(wx, wy, Math.cos(a) * 30, Math.sin(a) * 30, 1.2, 4.5 + Math.random() * 4, 255, 245, 120, 3);
+  }
+}
+function spawnDust(gx, gy){
+  const wx = gx * CFG.PS + CFG.PS / 2, wy = gy * CFG.PS + CFG.PS / 2;
+  spawnPt(wx, wy, (Math.random() - 0.5) * 15, Math.random() * 20, 0.4, 1.2, 90, 110, 140);
+}
+
+// Lightning Arcs
+const ARCS = [];
+function addArc(x1, y1, x2, y2){
+  ARCS.push({ x1, y1, x2, y2, life: 0.16 });
+}
+function updArcs(dt){
+  for(let i = ARCS.length - 1; i >= 0; i--){
+    ARCS[i].life -= dt;
+    if(ARCS[i].life <= 0) ARCS.splice(i, 1);
+  }
+}
+
+// Shockwave Rings
+const WAVES = [];
+function addShockwave(x, y, maxRad){
+  WAVES.push({ x, y, r: 4, maxR: maxRad, life: 0.35, maxL: 0.35 });
+}
+function updWaves(dt){
+  for(let i = WAVES.length - 1; i >= 0; i--){
+    const w = WAVES[i];
+    w.life -= dt;
+    w.r += (w.maxR - w.r) * (dt / w.maxL) * 2;
+    if(w.life <= 0) WAVES.splice(i, 1);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// §13 COMBO SYSTEM
+// ═══════════════════════════════════════════════════════════
+function updCombo(){
+  const n = G.comboN;
+  let m = 1;
+  if(n >= 5) m = 2;
+  if(n >= 15) m = 3;
+  if(n >= 30) m = 5;
+  if(n >= 55) m = 8;
+  if(n >= 100) m = 10 + ((n - 100) / 40 | 0);
+
+  m = Math.round(m * getEff('comboM'));
+  G.combo = m;
+  if(n > SV.sts.combo) SV.sts.combo = n;
+
+  const box = document.getElementById('combo'), val = document.getElementById('cv');
+  if(n >= 4){
+    box.classList.remove('hide');
+    val.textContent = '×' + m;
+    val.className = 'cv' + (m >= 8 ? ' ultra' : (m >= 4 ? ' mega' : ''));
+    if(n === 5 || n === 15 || n === 30 || n === 55 || n === 100){
+      SFX.combo(m);
+      spawnFT(G.lx, G.ly - 28, 'COMBO ×' + m, 'combo');
+    }
+  } else {
+    box.classList.add('hide');
+  }
+}
+
+function tickCombo(dt){
+  if(G.comboT > 0){
+    G.comboT -= dt;
+    if(G.comboT <= 0){
+      G.comboN = 0; G.combo = 1;
+      document.getElementById('combo').classList.add('hide');
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// §14 UPGRADE GRAPH & ECONOMY
+// ═══════════════════════════════════════════════════════════
+const UPGS = {
+  bspd:    { name:'+Ball Speed', icon:'⚡', cat:'BALL', desc:'Orbs travel 20% faster per level', costs:[50, 150, 400, 1000], max:4, req:null },
+  bdmg:    { name:'+Ball Damage', icon:'💥', cat:'BALL', desc:'Each hit deals +50% damage per level', costs:[75, 200, 500, 1500], max:4, req:null },
+  brad:    { name:'+Ball Radius', icon:'○', cat:'BALL', desc:'Orb radius +20% per level', costs:[100, 300, 800], max:3, req:null },
+  bcnt:    { name:'+Extra Ball', icon:'◉', cat:'BALL', desc:'Launch +1 additional orb per volley', costs:[200, 600, 1500, 4000, 10000], max:5, req:'bspd' },
+  beff:    { name:'+Bounce Eff.', icon:'↩', cat:'BALL', desc:'Retain maximum speed on bounce', costs:[80, 250, 700], max:3, req:null },
+
+  drad:    { name:'+Damage Radius', icon:'💢', cat:'DEST', desc:'Explosions and acid affect a wider area', costs:[120, 350, 900], max:3, req:null },
+  chnN:    { name:'+Chain Length', icon:'↯', cat:'DEST', desc:'Lightning chains jump +2 extra times', costs:[200, 500, 1200], max:3, req:null },
+  crit:    { name:'+Critical', icon:'★', cat:'DEST', desc:'10% chance to deal 2x damage per level', costs:[150, 400, 1000], max:3, req:'bdmg' },
+  explCh:  { name:'Blast Impact', icon:'💣', cat:'DEST', desc:'10% chance on any hit to detonate', costs:[300, 800, 2200], max:3, req:'drad' },
+
+  bpx:     { name:'+Bits/Pixel', icon:'💎', cat:'ECON', desc:'Each pixel yields +50% bits per level', costs:[60, 180, 450, 1100], max:4, req:null },
+  comboM:  { name:'+Combo Power', icon:'×', cat:'ECON', desc:'Combo multipliers scale faster', costs:[100, 300, 800], max:3, req:'bpx' },
+  magnet:  { name:'Bit Magnet', icon:'🧲', cat:'ECON', desc:'Auto-collects bits with +25% bonus', costs:[400], max:1, req:'comboM' },
+
+  tur:     { name:'Auto-Turret', icon:'🔫', cat:'AUTO', desc:'Deploys an automated defense turret', costs:[500], max:1, req:null },
+  turS:    { name:'Turret Speed', icon:'⚡', cat:'AUTO', desc:'Turrets fire 50% faster per level', costs:[800, 2000], max:2, req:'tur' },
+  drone:   { name:'Excavation Drone', icon:'🛸', cat:'AUTO', desc:'Orbiting drone that fires plasma darts', costs:[1200], max:1, req:'tur' },
+  eros:    { name:'Passive Erosion', icon:'⏰', cat:'AUTO', desc:'Pixels slowly crumble over time', costs:[1000], max:1, req:'drone' },
+
+  ligO:    { name:'Lightning Orb', icon:'⚡', cat:'PROJ', desc:'Unlock Lightning Orb in launcher', costs:[300], max:1, req:null },
+  poiO:    { name:'Poison Orb', icon:'☠', cat:'PROJ', desc:'Unlock Poison Orb in launcher', costs:[400], max:1, req:'ligO' },
+  lasO:    { name:'Laser Orb', icon:'🔴', cat:'PROJ', desc:'Unlock Laser Orb in launcher', costs:[600], max:1, req:'poiO' },
+};
+
+const UL = {
+  bspd: [0,0], bdmg: [0,1], brad: [0,2], bcnt: [1,0], beff: [1,1],
+  drad: [3,0], chnN: [3,1], crit: [4,0], explCh: [4,1],
+  bpx: [6,0], comboM: [6,1], magnet: [7,0],
+  tur: [9,0], turS: [10,0], drone: [9,1], eros: [10,1],
+  ligO: [1,3], poiO: [3,3], lasO: [5,3]
+};
+
+function upgL(id){ return SV.upg[id] || 0; }
+function canUL(id){ const u = UPGS[id]; return !u.req || upgL(u.req) > 0; }
+function canAf(id){ const u = UPGS[id], l = upgL(id); return l < u.max && SV.cur >= u.costs[l]; }
+
+function buyUpg(id){
+  if(!canAf(id) || !canUL(id)) return false;
+  const u = UPGS[id], l = upgL(id);
+  SV.cur -= u.costs[l];
+  SV.upg[id] = (SV.upg[id] || 0) + 1;
+  if(id === 'ligO') SV.proj[1] = true;
+  if(id === 'poiO') SV.proj[2] = true;
+  if(id === 'lasO') SV.proj[3] = true;
+
+  SFX.upg();
+  saveSV();
+  updObs();
+  updHUD();
+  initTurs();
+  initDrones();
+  return true;
+}
+
+function getEff(stat){
+  const l = upgL;
+  let v = 1;
+  if(stat === 'bspd') v = 1 + l('bspd') * 0.2;
+  else if(stat === 'bdmg') v = 1 + l('bdmg') * 0.5;
+  else if(stat === 'brad') v = 1 + l('brad') * 0.2;
+  else if(stat === 'bcnt') v = 1 + l('bcnt');
+  else if(stat === 'beff') v = 1.0 - l('beff') * 0.015;
+  else if(stat === 'drad') v = l('drad');
+  else if(stat === 'chnN') v = l('chnN') * 2;
+  else if(stat === 'crit') v = l('crit') * 0.1;
+  else if(stat === 'explCh') v = l('explCh') * 0.1;
+  else if(stat === 'bpx') v = 1 + l('bpx') * 0.5;
+  else if(stat === 'comboM') v = 1 + l('comboM') * 0.5;
+  else if(stat === 'magnet') v = l('magnet') > 0;
+  else if(stat === 'tur') v = l('tur');
+  else if(stat === 'turS') v = 1 + l('turS') * 0.5;
+  else if(stat === 'drone') v = l('drone') > 0;
+  else if(stat === 'eros') v = l('eros') > 0;
+  else v = 0;
+
+  const ru = G.ru || {};
+  if(ru[stat] !== undefined) v *= ru[stat];
+  return v;
+}
+
+// Roguelite Expedition Choices
+const RUP = [
+  { id:'ru_s', name:'+25% Speed', icon:'⚡', desc:'All projectiles move 25% faster this run', stat:'bspd', m:1.25 },
+  { id:'ru_d', name:'+50% Damage', icon:'💥', desc:'Deal 50% more damage this run', stat:'bdmg', m:1.5 },
+  { id:'ru_b', name:'+40% Bits', icon:'💎', desc:'Earn 40% more bits from all pixels', stat:'bpx', m:1.4 },
+  { id:'ru_r', name:'+30% Radius', icon:'○', desc:'Larger projectile collision size', stat:'brad', m:1.3 },
+  { id:'ru_c', name:'+Chain Boost', icon:'↯', desc:'Lightning chains jump twice as far', stat:'chnN', m:2 },
+  { id:'ru_bc', name:'+1 Extra Ball', icon:'◉', desc:'One extra orb on every volley', stat:'bcnt', m:1.5 }
+];
+function genRU(){ return [...RUP].sort(() => Math.random() - 0.5).slice(0, 3); }
+function applyRU(opt){ if(!G.ru) G.ru = {}; G.ru[opt.stat] = (G.ru[opt.stat] || 1) * opt.m; }
+
+// ═══════════════════════════════════════════════════════════
+// §15 AUTOMATION: TURRETS, DRONES & EROSION
+// ═══════════════════════════════════════════════════════════
+let tX = new Float32Array(4), tY = new Float32Array(4), tT = new Float32Array(4), tAc = new Uint8Array(4);
+let droneAc = false, droneAngle = 0, droneTmr = 0;
+
+function initTurs(){
+  tAc.fill(0);
+  const n = getEff('tur') | 0;
+  const rate = CFG.TUR_RATE * (getEff('turS') || 1);
+  for(let i = 0; i < n && i < 4; i++){
+    const a = (i / n) * Math.PI - Math.PI / 2;
+    tX[i] = G.lx + Math.cos(a) * 55;
+    tY[i] = G.ly - 8 + Math.sin(a) * 28;
+    tT[i] = i * (1 / rate);
+    tAc[i] = 1;
+  }
+}
+function updTurs(dt){
+  const rate = CFG.TUR_RATE * (getEff('turS') || 1), inv = 1 / rate;
+  for(let i = 0; i < 4; i++){
+    if(!tAc[i]) continue;
+    tT[i] -= dt;
+    if(tT[i] <= 0){
+      tT[i] = inv;
+      fireTur(i);
+    }
+  }
+}
+function fireTur(ti){
+  const tx = tX[ti], ty = tY[ti], gr = (CFG.TUR_RANGE / CFG.PS) | 0;
+  const cgx = (tx / CFG.PS) | 0, cgy = (ty / CFG.PS) | 0;
+  let bi = -1, bd = Infinity;
+  for(let a = 0; a < 24; a++){
+    const rx = cgx + ((Math.random() * gr * 2 - gr) | 0);
+    const ry = cgy + ((Math.random() * gr - gr) | 0);
+    if(rx < 0 || rx >= GW2 || ry < 0 || ry >= GH2) continue;
+    const idx = ry * GW2 + rx;
+    if(pT[idx] === PT.E) continue;
+    const dd = (rx - cgx) * (rx - cgx) + (ry - cgy) * (ry - cgy);
+    if(dd < bd){ bd = dd; bi = idx; }
+  }
+  if(bi < 0) return;
+  const tgx = bi % GW2, tgy = (bi / GW2) | 0;
+  const wx = tgx * CFG.PS + CFG.PS / 2, wy = tgy * CFG.PS + CFG.PS / 2;
+  const dx = wx - tx, dy = wy - ty, dist = Math.sqrt(dx * dx + dy * dy) || 1;
+  spawnBall(tx, ty, (dx / dist) * CFG.SPD * 0.6, (dy / dist) * CFG.SPD * 0.6, PROJ.K, 2.5, 0.5);
+}
+
+function initDrones(){
+  droneAc = getEff('drone') > 0;
+  droneAngle = 0;
+  droneTmr = 0;
+}
+function updDrones(dt){
+  if(!droneAc) return;
+  droneAngle += dt * 1.5;
+  droneTmr -= dt;
+  if(droneTmr <= 0){
+    droneTmr = 1 / CFG.DRONE_RATE;
+    fireDrone();
+  }
+}
+function fireDrone(){
+  const dx = G.lx + Math.cos(droneAngle) * 90;
+  const dy = (G.ly - 40) + Math.sin(droneAngle) * 35;
+  const gr = (CFG.TUR_RANGE / CFG.PS) | 0;
+  const cgx = (dx / CFG.PS) | 0, cgy = (dy / CFG.PS) | 0;
+  let bi = -1, bd = Infinity;
+  for(let a = 0; a < 20; a++){
+    const rx = cgx + ((Math.random() * gr * 2 - gr) | 0);
+    const ry = cgy + ((Math.random() * gr - gr) | 0);
+    if(rx < 0 || rx >= GW2 || ry < 0 || ry >= GH2) continue;
+    const idx = ry * GW2 + rx;
+    if(pT[idx] === PT.E) continue;
+    const dd = (rx - cgx) * (rx - cgx) + (ry - cgy) * (ry - cgy);
+    if(dd < bd){ bd = dd; bi = idx; }
+  }
+  if(bi < 0) return;
+  const tgx = bi % GW2, tgy = (bi / GW2) | 0;
+  const wx = tgx * CFG.PS + CFG.PS / 2, wy = tgy * CFG.PS + CFG.PS / 2;
+  const vx = wx - dx, vy = wy - dy, dist = Math.hypot(vx, vy) || 1;
+  spawnBall(dx, dy, (vx / dist) * CFG.SPD * 0.85, (vy / dist) * CFG.SPD * 0.85, PROJ.R, 3, 0.8);
+}
+
+// Screen Shake & Flash
+let shX = 0, shY = 0, shI = 0;
+function shk(i){
+  if(!SV.set.shake) return;
+  if(SV.set.reduced) i *= 0.3;
+  shI = Math.max(shI, i);
+}
+function updShk(dt){
+  if(shI <= 0) return;
+  shX = (Math.random() * 2 - 1) * shI;
+  shY = (Math.random() * 2 - 1) * shI;
+  shI -= CFG.SHAKE_DEC * dt;
+  if(shI < 0){ shI = 0; shX = shY = 0; }
+}
+
+// Passive Erosion
+let eT = 0;
+function updEros(dt){
+  if(!getEff('eros')) return;
+  eT += dt;
+  if(eT < CFG.EROSION_INT) return;
+  eT = 0;
+  for(let i = 0; i < 4; i++){
+    const rx = (Math.random() * GW2) | 0, ry = (Math.random() * GH2) | 0;
+    const idx = ry * GW2 + rx;
+    if(pT[idx] === PT.E || pT[idx] === PT.C) continue;
+    const d = dmgPx(idx, 1);
+    if(d) qD(idx);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// §16 GAME STATE MACHINE
+// ═══════════════════════════════════════════════════════════
+const G = {
+  state: GS.BOOT, prev: GS.BOOT,
+  level: 1, bits: 0, runBits: 0, runPx: 0,
+  combo: 1, comboN: 0, comboT: 0,
+  fly: false, recalling: false, orb: PROJ.K,
+  ru: {}, lx: 0, ly: 0, ft: 0,
+  cgx: -1, cgy: -1, coreF: false, coreDist: 9999,
+  seed: 0, lvPx: 0, slowMo: 0,
+  speed: 1, // 1X, 2X, 3X
+  flash: 0, flashC: [255, 215, 0],
+  lcData: null, fps: 60, fpsT: 0, fpsN: 0, showDbg: false
+};
+let DBG = false;
+
+function setState(s){
+  G.prev = G.state; G.state = s;
+  updScr();
+}
+function updScr(){
+  const mp = {
+    [GS.MENU]:'menu', [GS.PAUSE]:'pw', [GS.LVC]:'lvc', [GS.UPG]:'uc',
+    [GS.RUN]:'runc', [GS.TREE]:'ut', [GS.SET]:'sset', [GS.STS]:'sts', [GS.HTP]:'htp'
+  };
+  for(const id of Object.values(mp)){
+    const e = document.getElementById(id);
+    if(e) e.classList.add('hidden');
+  }
+  if(mp[G.state]){
+    const e = document.getElementById(mp[G.state]);
+    if(e) e.classList.remove('hidden');
+  }
+  const pl = G.state === GS.PLAY || G.state === GS.PAUSE;
+  document.getElementById('hud').classList.toggle('hidden', !pl);
+  document.getElementById('lbar').classList.toggle('hidden', G.state !== GS.PLAY);
+}
+
+function _start(){
+  G.level = 1; G.bits = SV.cur; G.runBits = 0; G.runPx = 0;
+  G.comboN = 0; G.combo = 1; G.comboT = 0; G.ru = {};
+  G.coreF = false; G.fly = false; G.recalling = false;
+  SV.sts.runs++;
+
+  G.lx = (GW2 >> 1) * CFG.PS;
+  G.ly = GH2 * CFG.PS + 44;
+  G.seed = Date.now() | 0;
+
+  genLv(G.level, G.seed);
+  initCam();
+  initTurs();
+  initDrones();
+  clrBalls();
+
+  pAc2.fill(0); ptCnt = 0; ARCS.length = 0; WAVES.length = 0;
+  PQN = 0; DQH = DQT = 0; FQN = 0; eT = 0; shI = 0; G.slowMo = 0;
+
+  const fz = Math.min(CW / WW, CH / (WH + 54 * CFG.PS)) * 0.88;
+  CAM.z = CAM.tz = fz;
+  CAM.x = CAM.tx = WW / 2 - CW / (2 * fz);
+  CAM.y = CAM.ty = (WH * 0.46) - CH / (2 * fz);
+
+  setState(GS.PLAY);
+  updHUD();
+  updObs();
+  document.getElementById('recall-btn').style.display = 'none';
+
+  if(SV.first){
+    showTut();
+    SV.first = false;
+    saveSV();
+  }
+}
+
+function _restart(){ clrBalls(); _start(); }
+function _pause(){ if(G.state !== GS.PLAY) return; setState(GS.PAUSE); }
+function _resume(){ if(G.state !== GS.PAUSE) return; setState(GS.PLAY); }
+function _menu(){ clrBalls(); saveSV(); setState(GS.MENU); refMSts(); }
+function _selOrb(t){ if(!SV.proj[t]) return; G.orb = t; updObs(); }
+function _contUpg(){ fillUC(genRU()); setState(GS.UPG); }
+function _skip(){ nextLv(); }
+function _closeOv(){ if(G.prev === GS.PLAY) setState(GS.PLAY); else setState(GS.MENU); }
+function _showTree(){ G.prev = G.state; setState(GS.TREE); initTC(); renderTree(); }
+function _closeTree(){ _closeOv(); updHUD(); }
+function _showStats(){ fillSts(); G.prev = G.state; setState(GS.STS); }
+function _closeSts(){ _closeOv(); }
+function _showSet(fp = false){
+  document.getElementById('sv').value = SV.set.vol * 100;
+  document.getElementById('ss').value = SV.set.sfx * 100;
+  document.getElementById('sh').checked = SV.set.shake;
+  document.getElementById('re').checked = SV.set.reduced;
+  G.prev = G.state; setState(GS.SET);
+}
+function _closeSet(){ saveSV(); _closeOv(); }
+function _set(k, v){
+  if(k === 'vol'){ SV.set.vol = v / 100; setVol(SV.set.vol); }
+  if(k === 'sfx') SV.set.sfx = v / 100;
+  if(k === 'shake') SV.set.shake = !!v;
+  if(k === 'reduced') SV.set.reduced = !!v;
+}
+function _showHTP(){ G.prev = G.state; setState(GS.HTP); }
+function _closeHTP(){ _closeOv(); }
+function _resetConfirm(){
+  if(confirm('Reset ALL save data and statistics? This cannot be undone.')){
+    resetSave();
+    G.bits = 0; updHUD(); refMSts();
+    alert('Save data reset successfully.');
+  }
+}
+function resetSave(){ SV = defSV(); saveSV(); }
+
+function _toggleSpeed(){
+  if(G.speed === 1) G.speed = 2;
+  else if(G.speed === 2) G.speed = 3;
+  else G.speed = 1;
+  document.getElementById('speed-btn').textContent = G.speed + 'X';
+  document.getElementById('dsp').textContent = G.speed + 'X';
+}
+
+function nextLv(){
+  G.level++;
+  if(G.level > SV.sts.lvl) SV.sts.lvl = G.level;
+  G.coreF = false; G.fly = false; G.recalling = false;
+  G.seed = (G.seed ^ G.level) | 0;
+
+  genLv(G.level, G.seed);
+  clrBalls();
+  ARCS.length = 0; WAVES.length = 0; PQN = 0; DQH = DQT = 0; FQN = 0;
+  pAc2.fill(0); ptCnt = 0;
+  initTurs();
+  initDrones();
+
+  setState(GS.PLAY);
+  updHUD();
+  document.getElementById('recall-btn').style.display = 'none';
+
+  // Sector Milestone check (every 5 levels)
+  if(G.level % 5 === 0){
+    showBanner('✦ SECTOR ' + (G.level / 5) + ' REACHED ✦');
+  }
+}
+
+function completeLevel(){
+  G.fly = false;
+  G.recalling = false;
+  document.getElementById('recall-btn').style.display = 'none';
+  SFX.done();
+
+  const bonus = (G.lvPx - pxA) * 2 * G.level;
+  G.bits += bonus; SV.cur += bonus;
+  G.lcData = { bits: G.runBits + bonus, px: G.runPx, combo: SV.sts.combo, bonus };
+  fillLC();
+  setState(GS.LVC);
+  saveSV();
+}
+
+function showBanner(text){
+  const b = document.getElementById('banner');
+  b.textContent = text;
+  b.classList.add('show');
+  setTimeout(() => b.classList.remove('show'), 2400);
+}
+
+// ═══════════════════════════════════════════════════════════
+// §17 UI HELPERS & COMPASS RADAR
+// ═══════════════════════════════════════════════════════════
+function updHUD(){
+  const lv = document.getElementById('hlv'); if(lv) lv.textContent = String(G.level).padStart(2, '0');
+  const bt = document.getElementById('hbt'); if(bt) bt.textContent = fmt(G.bits);
+  const bc = document.getElementById('bn'); if(bc) bc.textContent = '' + (getEff('bcnt') | 0);
+  const tb = document.getElementById('tb'); if(tb) tb.textContent = fmt(SV.cur);
+
+  // Radar Proximity update
+  const rTxt = document.getElementById('radar-txt');
+  if(rTxt){
+    if(G.coreDist < 80) rTxt.textContent = 'CORE NEAR!';
+    else if(G.coreDist < 180) rTxt.textContent = 'SIGNAL DETECTED';
+    else rTxt.textContent = 'CORE SEALED';
+  }
+}
+
+function updObs(){
+  for(let i = 0; i < 4; i++){
+    const e = document.getElementById('ob' + i);
+    if(!e) continue;
+    e.classList.toggle('sel', G.orb === i && SV.proj[i]);
+    e.classList.toggle('lck', !SV.proj[i]);
+  }
+}
+
+function refMSts(){
+  const e = document.getElementById('mst');
+  if(!e) return;
+  const s = SV.sts;
+  e.innerHTML = `
+    <div class="ms"><div class="v">${fmt(s.px)}</div><div class="l">PIXELS</div></div>
+    <div class="ms"><div class="v">${fmt(SV.lbits)}</div><div class="l">BITS</div></div>
+    <div class="ms"><div class="v">${s.lvl || 0}</div><div class="l">MAX LVL</div></div>
+    <div class="ms"><div class="v">${s.cores}</div><div class="l">CORES</div></div>
+  `;
+}
+
+function fillLC(){
+  const d = G.lcData;
+  if(!d) return;
+  document.getElementById('lcb').textContent = fmt(d.bits);
+  const excavPct = G.lvPx > 0 ? Math.round(((G.lvPx - pxA) / G.lvPx) * 100) : 100;
+  document.getElementById('lcs').innerHTML = `
+    <div class="si"><div class="v">${G.level}</div><div class="l">SECTOR CLEARED</div></div>
+    <div class="si"><div class="v">${excavPct}%</div><div class="l">EXCAVATED</div></div>
+    <div class="si"><div class="v">×${d.combo}</div><div class="l">MAX COMBO</div></div>
+    <div class="si"><div class="v">${fmt(d.bonus)}</div><div class="l">BONUS BITS</div></div>
+  `;
+}
+
+function fillUC(ch){
+  const el = document.getElementById('ucg');
+  el.innerHTML = '';
+  ch.forEach(o => {
+    const c = document.createElement('div');
+    c.className = 'ucc';
+    c.innerHTML = `
+      <div class="ucc-tag">MOD</div>
+      <div class="ui">${o.icon}</div>
+      <div class="un">${o.name}</div>
+      <div class="ud">${o.desc}</div>
+    `;
+    c.onclick = () => { applyRU(o); nextLv(); };
+    el.appendChild(c);
+  });
+}
+
+function fillSts(){
+  const s = SV.sts;
+  document.getElementById('stc').innerHTML = `
+    <div class="stc"><div class="v">${fmt(s.px)}</div><div class="l">PIXELS DESTROYED</div></div>
+    <div class="stc"><div class="v">${fmt(SV.lbits)}</div><div class="l">LIFETIME BITS</div></div>
+    <div class="stc"><div class="v">${s.combo}×</div><div class="l">HIGHEST COMBO</div></div>
+    <div class="stc"><div class="v">${s.lvl || 0}</div><div class="l">MAX LEVEL</div></div>
+    <div class="stc"><div class="v">${s.cores}</div><div class="l">CORES EXCAVATED</div></div>
+    <div class="stc"><div class="v">${fmt(s.balls)}</div><div class="l">ORBS LAUNCHED</div></div>
+    <div class="stc"><div class="v">${fmt(s.chains)}</div><div class="l">LIGHTNING CHAINS</div></div>
+    <div class="stc"><div class="v">${s.runs || 0}</div><div class="l">EXPEDITIONS</div></div>
+  `;
+}
+
+// ═══════════════════════════════════════════════════════════
+// §18 UPGRADE TREE CANVAS (INTERACTIVE NODE GRAPH)
+// ═══════════════════════════════════════════════════════════
+let UTC = null, UTX = null;
+const NW = 105, NH = 58, NPX = 135, NPY = 86, NOX = 32, NOY = 55;
+let NP = {};
+let treePanX = 0, treePanY = 0, isTreeDragging = false, treeDragSX = 0, treeDragSY = 0;
+
+function initTC(){
+  if(UTC) return;
+  UTC = document.getElementById('utc');
+  UTX = UTC.getContext('2d');
+  UTC.addEventListener('click', onTC);
+  UTC.addEventListener('mousedown', e => {
+    if(e.button === 0){ isTreeDragging = true; treeDragSX = e.clientX - treePanX; treeDragSY = e.clientY - treePanY; }
+  });
+  window.addEventListener('mouseup', () => isTreeDragging = false);
+  UTC.addEventListener('mousemove', e => {
+    if(isTreeDragging){
+      treePanX = e.clientX - treeDragSX;
+      treePanY = e.clientY - treeDragSY;
+      renderTree();
+    } else {
+      onTH(e);
+    }
+  });
+  UTC.addEventListener('mouseleave', () => document.getElementById('ttp').style.display = 'none');
+}
+
+function compNP(){
+  NP = {};
+  for(const [id, [col, row]] of Object.entries(UL)){
+    NP[id] = { x: NOX + col * NPX, y: NOY + row * NPY, w: NW, h: NH };
+  }
+}
+
+function renderTree(){
+  if(!UTC) return;
+  const p = UTC.parentElement;
+  UTC.width = p.offsetWidth;
+  UTC.height = p.offsetHeight - 56;
+  document.getElementById('tb').textContent = fmt(SV.cur);
+  compNP();
+
+  const ctx = UTX, cw = UTC.width, ch = UTC.height;
+  ctx.clearRect(0, 0, cw, ch);
+  ctx.fillStyle = '#04030d';
+  ctx.fillRect(0, 0, cw, ch);
+
+  ctx.save();
+  ctx.translate(treePanX, treePanY);
+
+  // Category column headers
+  const cats = [
+    ['BALL CORE', '#4a7fff', 20],
+    ['DESTRUCTION', '#ff4060', 430],
+    ['ECONOMY', '#ffd700', 840],
+    ['AUTOMATION', '#30ff80', 1230],
+    ['ORB MATRIX', '#a04aff', 165]
+  ];
+  ctx.font = 'bold 10px ui-monospace,monospace';
+  cats.forEach(([n, c, x]) => {
+    ctx.fillStyle = c + '88';
+    ctx.fillText(n, x, 24);
+  });
+
+  // Dependency Lines
+  for(const [id, def] of Object.entries(UPGS)){
+    if(!def.req) continue;
+    const f = NP[def.req], t = NP[id];
+    if(!f || !t) continue;
+    ctx.strokeStyle = upgL(def.req) > 0 ? 'rgba(74,127,255,.55)' : 'rgba(255,255,255,.1)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 5]);
+    ctx.beginPath();
+    ctx.moveTo(f.x + NW / 2, f.y + NH / 2);
+    ctx.lineTo(t.x + NW / 2, t.y + NH / 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Nodes
+  for(const [id, def] of Object.entries(UPGS)){
+    const pos = NP[id];
+    if(!pos) continue;
+    const lv = upgL(id), mx = def.max, un = canUL(id), af = canAf(id), mxd = lv >= mx;
+
+    let bg, br;
+    if(mxd){ bg = 'rgba(74,127,255,.28)'; br = '#4a7fff'; }
+    else if(!un){ bg = 'rgba(255,255,255,.03)'; br = 'rgba(255,255,255,.1)'; }
+    else if(af){ bg = 'rgba(74,127,255,.14)'; br = 'rgba(74,127,255,.6)'; }
+    else { bg = 'rgba(255,255,255,.05)'; br = 'rgba(255,255,255,.18)'; }
+
+    ctx.fillStyle = bg;
+    ctx.strokeStyle = br;
+    ctx.lineWidth = mxd ? 2 : 1;
+    rrect(ctx, pos.x, pos.y, NW, NH, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = '16px serif';
+    ctx.fillText(def.icon, pos.x + 8, pos.y + 26);
+
+    ctx.fillStyle = un ? '#c8d8ff' : '#405070';
+    ctx.font = 'bold 9px ui-monospace,monospace';
+    ctx.fillText(def.name.slice(0, 14), pos.x + 30, pos.y + 18);
+
+    for(let l = 0; l < mx; l++){
+      ctx.fillStyle = l < lv ? '#4a7fff' : 'rgba(255,255,255,.14)';
+      ctx.fillRect(pos.x + 30 + l * 12, pos.y + 24, 9, 3);
+    }
+
+    if(mxd){
+      ctx.fillStyle = '#4a7fff';
+      ctx.font = '8px ui-monospace,monospace';
+      ctx.fillText('MAXED', pos.x + 30, pos.y + 44);
+    } else if(un){
+      const cost = def.costs[lv];
+      ctx.fillStyle = af ? '#ffd700' : '#885520';
+      ctx.font = '8px ui-monospace,monospace';
+      ctx.fillText(fmt(cost) + ' BITS', pos.x + 30, pos.y + 44);
+    } else {
+      ctx.fillStyle = '#405070';
+      ctx.font = '8px ui-monospace,monospace';
+      ctx.fillText('LOCKED', pos.x + 30, pos.y + 44);
+    }
+  }
+
+  ctx.restore();
+}
+
+function rrect(ctx, x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
+function onTC(e){
+  const rc = UTC.getBoundingClientRect();
+  const mx = (e.clientX - rc.left) - treePanX, my = (e.clientY - rc.top) - treePanY;
+  for(const [id, pos] of Object.entries(NP)){
+    if(mx >= pos.x && mx <= pos.x + NW && my >= pos.y && my <= pos.y + NH){
+      if(buyUpg(id)) renderTree();
+      return;
+    }
+  }
+}
+
+function onTH(e){
+  const rc = UTC.getBoundingClientRect();
+  const mx = (e.clientX - rc.left) - treePanX, my = (e.clientY - rc.top) - treePanY;
+  const tt = document.getElementById('ttp');
+  for(const [id, pos] of Object.entries(NP)){
+    if(mx >= pos.x && mx <= pos.x + NW && my >= pos.y && my <= pos.y + NH){
+      const def = UPGS[id], lv = upgL(id);
+      document.getElementById('ttn').textContent = def.icon + ' ' + def.name;
+      document.getElementById('ttd').textContent = def.desc;
+      document.getElementById('ttl').textContent = 'Level ' + lv + '/' + def.max;
+      document.getElementById('ttc').textContent = lv < def.max ? 'Cost: ' + fmt(def.costs[lv]) + ' bits' : 'MAXED OUT';
+      tt.style.display = 'block';
+      tt.style.left = (e.clientX + 14) + 'px';
+      tt.style.top = (e.clientY - 18) + 'px';
+      return;
+    }
+  }
+  tt.style.display = 'none';
+}
+
+// ═══════════════════════════════════════════════════════════
+// §19 FLOATING TEXT
+// ═══════════════════════════════════════════════════════════
+function spawnFT(wx, wy, txt, cls = 'bits'){
+  if(SV.set.reduced && Math.random() < 0.75) return;
+  const sc = w2s(wx, wy);
+  const el = document.createElement('div');
+  el.className = 'ft ' + cls;
+  el.textContent = txt;
+  el.style.left = sc.x + 'px';
+  el.style.top = sc.y + 'px';
+  document.getElementById('flt').appendChild(el);
+  setTimeout(() => { if(el.parentNode) el.parentNode.removeChild(el); }, 1150);
+}
+
+// ═══════════════════════════════════════════════════════════
+// §20 INTERACTIVE ONBOARDING TUTORIAL
+// ═══════════════════════════════════════════════════════════
+let tutStep = 0;
+const TUTS = [
+  { t: 'Welcome to DEPIXELER!\nColossal pixel monoliths hide a glowing ✦ Golden Core.\nExcavate the structure to reach it!', p: 'center' },
+  { t: 'Aim your cursor or drag your finger below the formation.\nRelease to launch an orb volley!', p: 'bottom' },
+  { t: 'Destroy pixels to earn BITS.\nChain continuous destructions to build a COMBO multiplier!', p: 'tr' },
+  { t: 'Follow the CORE RADAR in the HUD.\nLocate and destroy the Golden Core to advance!', p: 'center' }
+];
+
+function showTut(){ tutStep = 0; showTutStep(); }
+function showTutStep(){
+  const o = document.getElementById('tut');
+  o.innerHTML = '';
+  o.classList.remove('hidden');
+  if(tutStep >= TUTS.length){ o.classList.add('hidden'); return; }
+  const s = TUTS[tutStep];
+  const b = document.createElement('div');
+  b.className = 'tub';
+  b.innerHTML = s.t.replace(/\\n/g, '<br>') + '<br><br><button class="btn pri" style="width:100%" onclick="advTut()">CONTINUE →</button>';
+  if(s.p === 'center') b.style.cssText = 'top:38%;left:50%;transform:translate(-50%,-50%);max-width:270px';
+  else if(s.p === 'bottom') b.style.cssText = 'bottom:90px;left:50%;transform:translateX(-50%)';
+  else b.style.cssText = 'top:72px;right:16px';
+  o.appendChild(b);
+  o.style.pointerEvents = 'auto';
+}
+window.advTut = function(){ tutStep++; showTutStep(); };
+
+// ═══════════════════════════════════════════════════════════
+// §21 DEBUG COMMANDS & TELEMETRY
+// ═══════════════════════════════════════════════════════════
+function togDbg(){
+  G.showDbg = !G.showDbg;
+  document.getElementById('dbg').style.display = G.showDbg ? 'block' : 'none';
+}
+function updDbg(){
+  if(!G.showDbg) return;
+  document.getElementById('df').textContent = G.fps.toFixed(0);
+  document.getElementById('dsp').textContent = G.speed + 'X';
+  document.getElementById('dba').textContent = bCnt;
+  document.getElementById('dp').textContent = ptCnt;
+  document.getElementById('dpx').textContent = pxA;
+  document.getElementById('dd').textContent = pxD;
+  document.getElementById('dz').textContent = CAM.z.toFixed(2);
+  const chp = (G.cgx >= 0 && G.cgy >= 0 && pT[G.cgy * GW2 + G.cgx] === PT.C) ? pH[G.cgy * GW2 + G.cgx] : 0;
+  document.getElementById('dchp').textContent = chp;
+}
+function regenLv(){
+  G.seed = (Math.random() * 0x7FFFFFFF) | 0;
+  genLv(G.level, G.seed);
+  clrBalls();
+  G.fly = false;
+}
+function dbgUnlock(){
+  for(const id of Object.keys(UPGS)) SV.upg[id] = UPGS[id].max;
+  SV.proj.fill(true);
+  SV.cur = 999999; G.bits = 999999;
+  saveSV(); updObs(); updHUD(); initTurs(); initDrones();
+  if(UTC) renderTree();
+}
+function dbgDestRand(n){
+  for(let i = 0; i < n; i++){
+    const rx = (Math.random() * GW2) | 0, ry = (Math.random() * GH2) | 0;
+    const idx = ry * GW2 + rx;
+    if(pT[idx] !== PT.E) qD(idx);
+  }
+}
+function dbgBalls(){
+  for(let i = 0; i < 6; i++){
+    const a = -Math.PI / 2 + (Math.random() - 0.5) * 0.8;
+    spawnBall(G.lx + (Math.random() - 0.5) * 35, G.ly, Math.cos(a) * CFG.SPD, Math.sin(a) * CFG.SPD, PROJ.K, CFG.RAD, CFG.DMG);
+  }
+  G.fly = true;
+  document.getElementById('recall-btn').style.display = 'inline-flex';
+}
+
+// ═══════════════════════════════════════════════════════════
+// §22 CANVAS RENDERING ENGINE
+// ═══════════════════════════════════════════════════════════
+let CANVAS, CTX, DPR = 1, CW = 800, CH = 600;
+
+function initCanvas(){
+  CANVAS = document.getElementById('c');
+  CTX = CANVAS.getContext('2d');
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  resize();
+}
+
+function resize(){
+  CW = window.innerWidth; CH = window.innerHeight;
+  CANVAS.width = CW * DPR; CANVAS.height = CH * DPR;
+  CANVAS.style.width = CW + 'px'; CANVAS.style.height = CH + 'px';
+  CTX.scale(DPR, DPR);
+  if(CAM){ CAM.vw = CW; CAM.vh = CH; }
+}
+
+function render(){
+  const ctx = CTX;
+  ctx.save();
+  ctx.translate(shX, shY);
+
+  // Background deep space grid
+  ctx.fillStyle = '#04030d';
+  ctx.fillRect(-shX - 4, -shY - 4, CW + 8, CH + 8);
+  renderSpaceGrid(ctx);
+
+  if(G.state === GS.PLAY || G.state === GS.PAUSE || G.state === GS.LVC){
+    renderWorld(ctx);
+  }
+
+  ctx.restore();
+
+  // Screen Flash
+  if(G.flash > 0){
+    const fc = G.flashC;
+    ctx.fillStyle = 'rgba(' + fc[0] + ',' + fc[1] + ',' + fc[2] + ',' + (G.flash * 0.6) + ')';
+    ctx.fillRect(0, 0, CW, CH);
+    G.flash = Math.max(0, G.flash - 0.04);
+  }
+}
+
+function renderSpaceGrid(ctx){
+  const sz = 80 * CAM.z;
+  const ox = ((-CAM.x * CAM.z) % sz + sz) % sz;
+  const oy = ((-CAM.y * CAM.z) % sz + sz) % sz;
+
+  ctx.strokeStyle = 'rgba(80,120,255,.05)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for(let x = ox; x < CW; x += sz){
+    ctx.moveTo(x, 0); ctx.lineTo(x, CH);
+  }
+  for(let y = oy; y < CH; y += sz){
+    ctx.moveTo(0, y); ctx.lineTo(CW, y);
+  }
+  ctx.stroke();
+}
+
+function renderWorld(ctx){
+  ctx.save();
+  ctx.translate(-CAM.x * CAM.z, -CAM.y * CAM.z);
+  ctx.scale(CAM.z, CAM.z);
+
+  // 1. Pixel Grid
+  renderGrid(ctx);
+
+  // 2. Shockwaves
+  renderWaves(ctx);
+
+  // 3. Particles
+  renderParts(ctx);
+
+  // 4. Lightning Arcs
+  renderArcs(ctx);
+
+  // 5. Balls & Trajectory
+  renderBalls(ctx);
+
+  // 6. Turrets & Drones
+  renderLauncher(ctx);
+
+  // 7. Core Sunbeams & Aura
+  renderCoreAura(ctx);
+
+  ctx.restore();
+}
+
+function renderGrid(ctx){
+  const PS = CFG.PS;
+  const vmnX = Math.max(0, (CAM.x / PS) | 0), vmxX = Math.min(GW2 - 1, ((CAM.x + CW / CAM.z) / PS + 1) | 0);
+  const vmnY = Math.max(0, (CAM.y / PS) | 0), vmxY = Math.min(GH2 - 1, ((CAM.y + CH / CAM.z) / PS + 1) | 0);
+
+  const cmnX = Math.max(0, (vmnX / CKS) | 0), cmxX = Math.min(CKW - 1, (vmxX / CKS) | 0);
+  const cmnY = Math.max(0, (vmnY / CKS) | 0), cmxY = Math.min(CKH - 1, (vmxY / CKS) | 0);
+
+  let dirty = false;
+  for(let cy = cmnY; cy <= cmxY; cy++){
+    for(let cx = cmnX; cx <= cmxX; cx++){
+      const ci = cy * CKW + cx;
+      if(!ckD[ci]) continue;
+      ckD[ci] = 0; dirty = true;
+
+      const sx = cx * CKS, sy = cy * CKS, ex = Math.min(GW2, sx + CKS), ey = Math.min(GH2, sy + CKS);
+      for(let gy = sy; gy < ey; gy++){
+        for(let gx = sx; gx < ex; gx++){
+          const i = gy * GW2 + gx;
+          const col = PAL[pC[i] || 0];
+          ibuf[i] = (255 << 24) | (col[2] << 16) | (col[1] << 8) | col[0];
+        }
+      }
+    }
+  }
+
+  if(dirty) offX.putImageData(idat, 0, 0);
+
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(offC, 0, 0, GW2 * PS, GH2 * PS);
+}
+
+function renderBalls(ctx){
+  for(let i = 0; i < MB; i++){
+    if(!bAc[i]) continue;
+    const x = bX[i], y = bY[i], r = bR2[i], tp = bTp[i], col = PC[tp];
+
+    // Laser Beam Tracer
+    if(tp === PROJ.R){
+      const spd = Math.hypot(bVX[i], bVY[i]);
+      if(spd > 10){
+        const nx = bVX[i] / spd, ny = bVY[i] / spd;
+        ctx.strokeStyle = 'rgba(255,50,80,.6)';
+        ctx.lineWidth = r * 1.5;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - nx * 36, y - ny * 36);
+        ctx.stroke();
+      }
+    }
+
+    // Outer Glow
+    const grd = ctx.createRadialGradient(x, y, 0, x, y, r * 2.8);
+    grd.addColorStop(0, col + 'ff');
+    grd.addColorStop(0.45, col + '88');
+    grd.addColorStop(1, col + '00');
+    ctx.fillStyle = grd;
+    ctx.beginPath(); ctx.arc(x, y, r * 2.8, 0, Math.PI * 2); ctx.fill();
+
+    // Solid Core
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+
+    // Specular Highlight
+    ctx.fillStyle = 'rgba(255,255,255,.65)';
+    ctx.beginPath(); ctx.arc(x - r * 0.3, y - r * 0.3, r * 0.4, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Trajectory Prediction Line
+  if(IN.aiming && G.state === GS.PLAY && !G.fly) renderTraj(ctx);
+}
+
+function renderTraj(ctx){
+  let tx = G.lx, ty = G.ly;
+  let tvx = Math.cos(IN.angle) * CFG.SPD * getEff('bspd');
+  let tvy = Math.sin(IN.angle) * CFG.SPD * getEff('bspd');
+  const r = CFG.RAD * getEff('brad');
+
+  let firstHit = null;
+
+  for(let d = 0; d < 36; d++){
+    const al = (1 - d / 36) * 0.75;
+    tx += tvx * 0.032;
+    ty += tvy * 0.032;
+
+    if(tx - r < 0){ tx = r; tvx = Math.abs(tvx); }
+    if(tx + r > WW){ tx = WW - r; tvx = -Math.abs(tvx); }
+    if(ty - r < 0){ ty = r; tvy = Math.abs(tvy); }
+    if(ty > WH + 80) break;
+
+    const gx = (tx / CFG.PS) | 0, gy = (ty / CFG.PS) | 0;
+    if(gx >= 0 && gx < GW2 && gy >= 0 && gy < GH2 && pT[gy * GW2 + gx] !== PT.E){
+      firstHit = { x: tx, y: ty };
+      break;
+    }
+
+    ctx.globalAlpha = al;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(tx, ty, 2.5 / CAM.z, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.globalAlpha = 1.0;
+
+  // Impact reticle ring
+  if(firstHit){
+    const pulse = Math.sin(performance.now() * 0.01) * 2 + 6;
+    ctx.strokeStyle = 'rgba(255,215,0,.7)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(firstHit.x, firstHit.y, pulse / CAM.z, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+function renderLauncher(ctx){
+  const lx = G.lx, ly = G.ly;
+
+  // Launcher base
+  ctx.fillStyle = 'rgba(74,127,255,.28)';
+  ctx.strokeStyle = 'rgba(74,127,255,.8)';
+  ctx.lineWidth = 2;
+  rrect(ctx, lx - 24, ly - 8, 48, 16, 5);
+  ctx.fill(); ctx.stroke();
+
+  // Aim nozzle
+  const a = IN.angle, len = 30;
+  ctx.strokeStyle = 'rgba(255,255,255,.65)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(lx, ly);
+  ctx.lineTo(lx + Math.cos(a) * len, ly + Math.sin(a) * len);
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(255,255,255,.8)';
+  ctx.beginPath();
+  ctx.arc(lx + Math.cos(a) * len, ly + Math.sin(a) * len, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Auto-Turrets
+  for(let i = 0; i < 4; i++){
+    if(!tAc[i]) continue;
+    ctx.fillStyle = 'rgba(48,255,128,.4)';
+    ctx.strokeStyle = 'rgba(48,255,128,.9)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(tX[i], tY[i], 7.5, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+  }
+
+  // Orbital Drone
+  if(droneAc){
+    const drX = G.lx + Math.cos(droneAngle) * 90;
+    const drY = (G.ly - 40) + Math.sin(droneAngle) * 35;
+    ctx.fillStyle = 'rgba(0,229,255,.5)';
+    ctx.strokeStyle = 'rgba(0,229,255,.9)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(drX, drY, 6, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+
+    // Drone trail
+    ctx.fillStyle = 'rgba(0,229,255,.25)';
+    ctx.beginPath();
+    ctx.arc(drX - Math.cos(droneAngle) * 6, drY - Math.sin(droneAngle) * 6, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function renderParts(ctx){
+  for(let i = 0; i < MP; i++){
+    if(!pAc2[i]) continue;
+    const lt = pLf[i] / pML[i];
+    const sz = pSz[i] * lt;
+    ctx.globalAlpha = lt;
+
+    if(pTp2[i] === 3){
+      // Golden Sparkle
+      const grd = ctx.createRadialGradient(pX2[i], pY2[i], 0, pX2[i], pY2[i], sz * 2.5);
+      grd.addColorStop(0, 'rgba(' + pR2[i] + ',' + pG2[i] + ',' + pB2[i] + ',' + lt + ')');
+      grd.addColorStop(1, 'rgba(' + pR2[i] + ',' + pG2[i] + ',' + pB2[i] + ',0)');
+      ctx.fillStyle = grd;
+      ctx.beginPath(); ctx.arc(pX2[i], pY2[i], sz * 2.5, 0, Math.PI * 2); ctx.fill();
+    } else {
+      ctx.fillStyle = 'rgb(' + pR2[i] + ',' + pG2[i] + ',' + pB2[i] + ')';
+      ctx.fillRect(pX2[i] - sz * 0.5, pY2[i] - sz * 0.5, sz, sz);
+    }
+  }
+  ctx.globalAlpha = 1.0;
+}
+
+function renderArcs(ctx){
+  for(const arc of ARCS){
+    const a = arc.life / 0.16;
+    ctx.strokeStyle = 'rgba(255,240,60,' + a + ')';
+    ctx.lineWidth = 2.5;
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = '#ffee44';
+    ctx.beginPath();
+    ctx.moveTo(arc.x1, arc.y1);
+    const mx = (arc.x1 + arc.x2) / 2 + (Math.random() - 0.5) * 18;
+    const my = (arc.y1 + arc.y2) / 2 + (Math.random() - 0.5) * 18;
+    ctx.quadraticCurveTo(mx, my, arc.x2, arc.y2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+}
+
+function renderWaves(ctx){
+  for(const w of WAVES){
+    const a = w.life / w.maxL;
+    ctx.strokeStyle = 'rgba(0,229,255,' + (a * 0.7) + ')';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(w.x, w.y, w.r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+function renderCoreAura(ctx){
+  if(G.cgx < 0 || G.cgy < 0 || pT[G.cgy * GW2 + G.cgx] !== PT.C) return;
+  const wx = G.cgx * CFG.PS + CFG.PS / 2, wy = G.cgy * CFG.PS + CFG.PS / 2;
+  const t = performance.now() * 0.003;
+  const p = Math.sin(t) * 0.3 + 0.7;
+  const r2 = 16 + Math.sin(t * 1.4) * 5;
+
+  const grd = ctx.createRadialGradient(wx, wy, 0, wx, wy, r2 * 3.5);
+  grd.addColorStop(0, 'rgba(255,215,0,' + (p * 0.55) + ')');
+  grd.addColorStop(0.45, 'rgba(255,150,0,' + (p * 0.22) + ')');
+  grd.addColorStop(1, 'rgba(255,80,0,0)');
+  ctx.fillStyle = grd;
+  ctx.beginPath(); ctx.arc(wx, wy, r2 * 3.5, 0, Math.PI * 2); ctx.fill();
+
+  // Ambient core sparkles
+  if(Math.random() < 0.12){
+    const a = Math.random() * Math.PI * 2;
+    spawnPt(wx, wy, Math.cos(a) * 20, Math.sin(a) * 20 - 10, 0.5, 2.0, 255, 215, 0, 3);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// §23 MAIN FIXED-TIMESTEP SIMULATION LOOP
+// ═══════════════════════════════════════════════════════════
+let acc = 0, lastTS = 0, pTk = 0;
+
+function loop(ts){
+  requestAnimationFrame(loop);
+  if(!lastTS) lastTS = ts;
+
+  let rawDt = (ts - lastTS) / 1000;
+  lastTS = ts;
+  rawDt = Math.min(rawDt, CFG.MAX_DT);
+
+  // Slow motion for Core excavation celebration
+  let simDt = rawDt * G.speed;
+  if(G.slowMo > 0){
+    simDt *= 0.28;
+    G.slowMo -= rawDt;
+  }
+
+  // FPS Telemetry
+  G.fpsN++; G.fpsT += rawDt;
+  if(G.fpsT >= 0.5){
+    G.fps = G.fpsN / G.fpsT;
+    G.fpsN = 0; G.fpsT = 0;
+  }
+
+  if(G.state === GS.PLAY){
+    acc += simDt;
+    let st2 = 0;
+    while(acc >= CFG.FIXED_DT && st2 < 6){
+      updBalls(CFG.FIXED_DT);
+      pTk += 2;
+      if(pTk >= 5){
+        updPoi(pTk);
+        pTk = 0;
+      }
+      acc -= CFG.FIXED_DT;
+      st2++;
+    }
+
+    procDQ();
+    procFQ();
+    updPts(simDt);
+    updArcs(simDt);
+    updWaves(simDt);
+    tickCombo(simDt);
+    updCam(rawDt);
+    updShk(simDt);
+    updTurs(simDt);
+    updDrones(simDt);
+    updEros(simDt);
+
+    if(G.fly && allLnd()){
+      G.fly = false;
+      G.recalling = false;
+      document.getElementById('recall-btn').style.display = 'none';
+      updHUD();
+    }
+
+    updHUD();
+    updDbg();
+  }
+
+  render();
+}
+
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'hidden'){ lastTS = 0; acc = 0; }
+});
+window.addEventListener('resize', () => {
+  resize();
+  if(G.state === GS.TREE && UTC) renderTree();
+});
+
+// ═══════════════════════════════════════════════════════════
+// §24 INITIALIZATION & GLOBAL EXPORTS
+// ═══════════════════════════════════════════════════════════
+window._start = _start;
+window._restart = _restart;
+window._pause = _pause;
+window._resume = _resume;
+window._menu = _menu;
+window._selOrb = _selOrb;
+window._contUpg = _contUpg;
+window._skip = _skip;
+window._showTree = _showTree;
+window._closeTree = _closeTree;
+window._showStats = _showStats;
+window._closeSts = _closeSts;
+window._showSet = _showSet;
+window._closeSet = _closeSet;
+window._set = _set;
+window._showHTP = _showHTP;
+window._closeHTP = _closeHTP;
+window._resetConfirm = _resetConfirm;
+window._recallBalls = _recallBalls;
+window._toggleSpeed = _toggleSpeed;
+
+function init(){
+  loadSV();
+  initCanvas();
+  initGrid();
+  initInput();
+
+  setTimeout(() => {
+    const ld = document.getElementById('ld');
+    if(ld){
+      ld.style.opacity = '0';
+      setTimeout(() => {
+        ld.classList.add('hidden');
+        setState(GS.MENU);
+        refMSts();
+      }, 500);
+    }
+  }, 1100);
+
+  requestAnimationFrame(loop);
+}
+
+init();
+</script>
+</body>
+</html>
