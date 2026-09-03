@@ -1521,8 +1521,8 @@
     function onPD(e) {
       e.preventDefault();
       resumeAC();
-      // Middle click or Right click pan
-      if (e.button === 1 || e.button === 2) {
+      // Middle click, Right click, or Shift/Alt + click pan
+      if (e.button === 1 || e.button === 2 || e.shiftKey || e.altKey) {
         IN.mid = true; IN.msx = e.clientX; IN.msy = e.clientY;
         IN.mcx = CAM.tx; IN.mcy = CAM.ty;
         return;
@@ -1554,10 +1554,16 @@
     }
 
     function onPM(e) {
-      // Middle or right drag pan
+      // Middle, right, or shift/alt drag pan, or touch/click drag while flying
       if (IN.mid || (IN.panActive && G.fly)) {
         const dx = (e.clientX - IN.msx) / CAM.z, dy = (e.clientY - IN.msy) / CAM.z;
         CAM.tx = IN.mcx - dx; CAM.ty = IN.mcy - dy;
+        const ww = CFG.GW * CFG.PS, wh = (CFG.GH + 18) * CFG.PS;
+        const vw = CW / CAM.z, vh = CH / CAM.z;
+        CAM.tx = cl(CAM.tx, -vw * 0.25, ww - vw * 0.75);
+        CAM.ty = cl(CAM.ty, -vh * 0.25, wh - vh * 0.75);
+        // Direct 1:1 camera tracking while dragging - zero lag!
+        CAM.x = CAM.tx; CAM.y = CAM.ty;
         return;
       }
       // Pinch to zoom
@@ -1580,7 +1586,7 @@
       if (e.button === 1 || e.button === 2) { IN.mid = false; return; }
       if (e.pointerId !== IN.pid) { IN.p2 = false; return; }
       const wasAiming = IN.aiming;
-      IN.down = false; IN.aiming = false; IN.p2 = false; IN.panActive = false;
+      IN.down = false; IN.aiming = false; IN.p2 = false; IN.panActive = false; IN.mid = false;
 
       // Launch balls on pointer release if in play state and not flying
       if (G.state === GS.PLAY && wasAiming && !G.fly) {
@@ -1635,20 +1641,29 @@
       CAM.y = CAM.ty = (wh * 0.46) - CH / (2 * fz);
     }
     function updCam(dt) {
-      const ps = CFG.PS * 75 * dt / CAM.z;
+      // Responsive keyboard panning
+      const ps = CFG.PS * 220 * dt / CAM.z;
       if (IN.keys['KeyW'] || IN.keys['ArrowUp']) CAM.ty -= ps;
       if (IN.keys['KeyS'] || IN.keys['ArrowDown']) CAM.ty += ps;
       if (IN.keys['KeyA'] || IN.keys['ArrowLeft']) CAM.tx -= ps;
       if (IN.keys['KeyD'] || IN.keys['ArrowRight']) CAM.tx += ps;
 
-      CAM.z = lerp(CAM.z, CAM.tz, 0.14);
-      CAM.x = lerp(CAM.x, CAM.tx, 0.12);
-      CAM.y = lerp(CAM.y, CAM.ty, 0.12);
-
       const ww = CFG.GW * CFG.PS, wh = (CFG.GH + 18) * CFG.PS;
       const vw = CW / CAM.z, vh = CH / CAM.z;
       CAM.tx = cl(CAM.tx, -vw * 0.25, ww - vw * 0.75);
       CAM.ty = cl(CAM.ty, -vh * 0.25, wh - vh * 0.75);
+
+      // If active dragging, camera position was already set 1:1 in onPM
+      if (IN.mid || (IN.panActive && G.fly)) {
+        CAM.x = CAM.tx;
+        CAM.y = CAM.ty;
+      } else {
+        const tLerp = 1 - Math.exp(-24 * dt);
+        CAM.x = lerp(CAM.x, CAM.tx, tLerp);
+        CAM.y = lerp(CAM.y, CAM.ty, tLerp);
+      }
+      const zLerp = 1 - Math.exp(-20 * dt);
+      CAM.z = lerp(CAM.z, CAM.tz, zLerp);
     }
 
     function w2s(wx, wy) { return { x: (wx - CAM.x) * CAM.z, y: (wy - CAM.y) * CAM.z }; }
@@ -2964,18 +2979,43 @@
     // ═══════════════════════════════════════════════════════════
     // §17 UI HELPERS & COMPASS RADAR
     // ═══════════════════════════════════════════════════════════
+    let _elLv = null, _elBt = null, _elBc = null, _elTb = null, _elRadar = null;
+    let _lastLv = -1, _lastBits = -1, _lastBc = -1, _lastTb = -1, _lastRadarState = -1;
+
     function updHUD() {
-      const lv = document.getElementById('hlv'); if (lv) lv.textContent = String(G.level).padStart(2, '0');
-      const bt = document.getElementById('hbt'); if (bt) bt.textContent = fmt(G.bits);
-      const bc = document.getElementById('bn'); if (bc) bc.textContent = '' + (getEff('bcnt') | 0);
-      const tb = document.getElementById('tb'); if (tb) tb.textContent = fmt(SV.cur);
+      if (!_elLv) {
+        _elLv = document.getElementById('hlv');
+        _elBt = document.getElementById('hbt');
+        _elBc = document.getElementById('bn');
+        _elTb = document.getElementById('tb');
+        _elRadar = document.getElementById('radar-txt');
+      }
+
+      if (_elLv && G.level !== _lastLv) {
+        _lastLv = G.level;
+        _elLv.textContent = String(G.level).padStart(2, '0');
+      }
+      if (_elBt && G.bits !== _lastBits) {
+        _lastBits = G.bits;
+        _elBt.textContent = fmt(G.bits);
+      }
+      const bcnt = getEff('bcnt') | 0;
+      if (_elBc && bcnt !== _lastBc) {
+        _lastBc = bcnt;
+        _elBc.textContent = '' + bcnt;
+      }
+      if (_elTb && SV.cur !== _lastTb) {
+        _lastTb = SV.cur;
+        _elTb.textContent = fmt(SV.cur);
+      }
 
       // Radar Proximity update
-      const rTxt = document.getElementById('radar-txt');
-      if (rTxt) {
-        if (G.coreDist < 80) rTxt.textContent = 'CORE NEAR!';
-        else if (G.coreDist < 180) rTxt.textContent = 'SIGNAL DETECTED';
-        else rTxt.textContent = 'CORE SEALED';
+      if (_elRadar) {
+        const rState = G.coreDist < 80 ? 2 : (G.coreDist < 180 ? 1 : 0);
+        if (rState !== _lastRadarState) {
+          _lastRadarState = rState;
+          _elRadar.textContent = rState === 2 ? 'CORE NEAR!' : (rState === 1 ? 'SIGNAL DETECTED' : 'CORE SEALED');
+        }
       }
     }
 
@@ -3223,15 +3263,18 @@
     // ═══════════════════════════════════════════════════════════
     // §19 FLOATING TEXT
     // ═══════════════════════════════════════════════════════════
+    let _elFlt = null;
     function spawnFT(wx, wy, txt, cls = 'bits') {
       if (SV.set.reduced && Math.random() < 0.75) return;
+      if (!_elFlt) _elFlt = document.getElementById('flt');
+      if (!_elFlt || _elFlt.childElementCount > 25) return;
       const sc = w2s(wx, wy);
       const el = document.createElement('div');
       el.className = 'ft ' + cls;
       el.textContent = txt;
       el.style.left = sc.x + 'px';
       el.style.top = sc.y + 'px';
-      document.getElementById('flt').appendChild(el);
+      _elFlt.appendChild(el);
       setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 1150);
     }
 
@@ -3357,8 +3400,206 @@
       }
     }
 
+    let arenaOffC = null;
+    function initStaticArena() {
+      const W = WW, H = WH, H_TOTAL = WH + 80;
+      arenaOffC = document.createElement('canvas');
+      arenaOffC.width = W + 48;
+      arenaOffC.height = H_TOTAL + 48;
+      const actx = arenaOffC.getContext('2d');
+      actx.translate(24, 24);
+
+      // 1. Playfield chamber fill (provides distinct contrast against outer space)
+      actx.fillStyle = 'rgba(7, 8, 26, 0.65)';
+      actx.fillRect(0, 0, W, H_TOTAL);
+
+      // 2. Subtle interior sector grid
+      actx.strokeStyle = 'rgba(80, 120, 255, 0.05)';
+      actx.lineWidth = 1;
+      actx.beginPath();
+      const step = 80;
+      for (let x = step; x < W; x += step) {
+        actx.moveTo(x, 0); actx.lineTo(x, H);
+      }
+      for (let y = step; y < H; y += step) {
+        actx.moveTo(0, y); actx.lineTo(W, y);
+      }
+      actx.stroke();
+
+      // 3. Launch bay staging deck fill
+      actx.fillStyle = 'rgba(14, 18, 46, 0.45)';
+      actx.fillRect(0, H, W, 80);
+
+      // 4. Outer Structural Rail Plates (Cyber armor casing)
+      actx.fillStyle = 'rgba(10, 14, 36, 0.9)';
+      actx.fillRect(-12, -12, W + 24, 12);       // Top plate
+      actx.fillRect(-12, 0, 12, H_TOTAL + 12);   // Left plate
+      actx.fillRect(W, 0, 12, H_TOTAL + 12);     // Right plate
+
+      // Outer Plate Bevel Edges
+      actx.strokeStyle = 'rgba(80, 120, 255, 0.28)';
+      actx.lineWidth = 1.5;
+      actx.strokeRect(-12, -12, W + 24, H_TOTAL + 24);
+
+      // Neon Energy Rails (Left, Top, Right Walls)
+      // Wide Neon Bloom
+      actx.strokeStyle = 'rgba(0, 229, 255, 0.18)';
+      actx.lineWidth = 10;
+      actx.beginPath();
+      actx.moveTo(0, H_TOTAL); actx.lineTo(0, 0); actx.lineTo(W, 0); actx.lineTo(W, H_TOTAL);
+      actx.stroke();
+
+      // Vibrant Cyber Shield Line
+      actx.strokeStyle = 'rgba(74, 127, 255, 0.75)';
+      actx.lineWidth = 4;
+      actx.beginPath();
+      actx.moveTo(0, H_TOTAL); actx.lineTo(0, 0); actx.lineTo(W, 0); actx.lineTo(W, H_TOTAL);
+      actx.stroke();
+
+      // Bright Core Beam
+      actx.strokeStyle = '#e0f4ff';
+      actx.lineWidth = 1.5;
+      actx.beginPath();
+      actx.moveTo(0, H_TOTAL); actx.lineTo(0, 0); actx.lineTo(W, 0); actx.lineTo(W, H_TOTAL);
+      actx.stroke();
+
+      // TICK MARKS & RULER NOTCHES
+      actx.strokeStyle = 'rgba(0, 229, 255, 0.45)';
+      actx.lineWidth = 1.5;
+      actx.beginPath();
+      for (let x = 40; x < W; x += 40) {
+        const maj = (x % 160 === 0);
+        actx.moveTo(x, 0);
+        actx.lineTo(x, maj ? 12 : 5);
+      }
+      for (let y = 40; y < H_TOTAL; y += 40) {
+        const maj = (y % 160 === 0);
+        actx.moveTo(0, y);
+        actx.lineTo(maj ? 12 : 5, y);
+        actx.moveTo(W, y);
+        actx.lineTo(W - (maj ? 12 : 5), y);
+      }
+      actx.stroke();
+
+      // GRID DIVISION LINE (At y = WH)
+      actx.save();
+      actx.setLineDash([10, 8]);
+      actx.strokeStyle = 'rgba(80, 120, 255, 0.38)';
+      actx.lineWidth = 1.5;
+      actx.beginPath();
+      actx.moveTo(0, H);
+      actx.lineTo(W, H);
+      actx.stroke();
+      actx.restore();
+
+      // Demarcation text
+      actx.fillStyle = 'rgba(80, 140, 255, 0.45)';
+      actx.font = 'bold 9px ui-monospace, monospace';
+      actx.textAlign = 'center';
+      actx.textBaseline = 'bottom';
+      actx.fillText('— FORMATION GRID BOUNDARY // LAUNCH BAY —', W / 2, H - 4);
+
+      // BOTTOM HAZARD / VOID DROP LINE (At y = WH + 80)
+      actx.strokeStyle = 'rgba(255, 64, 96, 0.25)';
+      actx.lineWidth = 8;
+      actx.beginPath();
+      actx.moveTo(0, H_TOTAL);
+      actx.lineTo(W, H_TOTAL);
+      actx.stroke();
+
+      actx.save();
+      actx.setLineDash([14, 10]);
+      actx.strokeStyle = 'rgba(255, 70, 100, 0.85)';
+      actx.lineWidth = 2.5;
+      actx.beginPath();
+      actx.moveTo(0, H_TOTAL);
+      actx.lineTo(W, H_TOTAL);
+      actx.stroke();
+      actx.restore();
+
+      actx.fillStyle = 'rgba(255, 90, 120, 0.7)';
+      actx.font = 'bold 10px ui-monospace, monospace';
+      actx.textAlign = 'center';
+      actx.textBaseline = 'top';
+      actx.fillText('▲ ▲ ▲ VOID THRESHOLD — RECALL BOUNDARY ▲ ▲ ▲', W / 2, H_TOTAL + 4);
+
+      // CORNER BRACKETS & PYLONS
+      const crLen = 45;
+      actx.strokeStyle = '#00e5ff';
+      actx.lineWidth = 3;
+      actx.beginPath();
+      actx.moveTo(0, crLen); actx.lineTo(0, 0); actx.lineTo(crLen, 0);
+      actx.moveTo(W - crLen, 0); actx.lineTo(W, 0); actx.lineTo(W, crLen);
+      actx.stroke();
+
+      actx.font = 'bold 9px ui-monospace, monospace';
+      actx.fillStyle = 'rgba(0, 229, 255, 0.6)';
+      actx.textAlign = 'left';
+      actx.fillText('SECTOR 01 [0, 0]', 14, 18);
+      actx.textAlign = 'right';
+      actx.fillText('SECTOR 02 [' + W + ', 0]', W - 14, 18);
+
+      // Bottom Corner Pylons
+      actx.fillStyle = 'rgba(255, 64, 96, 0.85)';
+      actx.beginPath(); actx.arc(0, H_TOTAL, 4, 0, Math.PI * 2); actx.fill();
+      actx.beginPath(); actx.arc(W, H_TOTAL, 4, 0, Math.PI * 2); actx.fill();
+    }
+
+    const BALL_SPRITES = [];
+    function initBallSprites() {
+      for (let tp = 0; tp < 4; tp++) {
+        const spr = document.createElement('canvas');
+        spr.width = 64; spr.height = 64;
+        const sctx = spr.getContext('2d');
+        const col = PC[tp];
+        const cx = 32, cy = 32, br = 11.4;
+
+        // Outer Glow
+        const grd = sctx.createRadialGradient(cx, cy, 0, cx, cy, br * 2.8);
+        grd.addColorStop(0, col + 'ff');
+        grd.addColorStop(0.45, col + '88');
+        grd.addColorStop(1, col + '00');
+        sctx.fillStyle = grd;
+        sctx.beginPath(); sctx.arc(cx, cy, br * 2.8, 0, Math.PI * 2); sctx.fill();
+
+        // Solid Core
+        sctx.fillStyle = col;
+        sctx.beginPath(); sctx.arc(cx, cy, br, 0, Math.PI * 2); sctx.fill();
+
+        // Specular Highlight
+        sctx.fillStyle = 'rgba(255,255,255,.65)';
+        sctx.beginPath(); sctx.arc(cx - br * 0.3, cy - br * 0.3, br * 0.4, 0, Math.PI * 2); sctx.fill();
+
+        BALL_SPRITES[tp] = spr;
+      }
+    }
+
+    let SPARKLE_SPRITE = null;
+    function initSparkleSprite() {
+      SPARKLE_SPRITE = document.createElement('canvas');
+      SPARKLE_SPRITE.width = 32; SPARKLE_SPRITE.height = 32;
+      const sctx = SPARKLE_SPRITE.getContext('2d');
+      const grd = sctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+      grd.addColorStop(0, 'rgba(255, 215, 0, 1)');
+      grd.addColorStop(0.5, 'rgba(255, 160, 0, 0.5)');
+      grd.addColorStop(1, 'rgba(255, 120, 0, 0)');
+      sctx.fillStyle = grd;
+      sctx.beginPath(); sctx.arc(16, 16, 16, 0, Math.PI * 2); sctx.fill();
+    }
+
+    const RGB_CACHE = new Map();
+    function getRgbStr(r, g, b) {
+      const key = (r << 16) | (g << 8) | b;
+      let s = RGB_CACHE.get(key);
+      if (!s) {
+        s = 'rgb(' + r + ',' + g + ',' + b + ')';
+        RGB_CACHE.set(key, s);
+      }
+      return s;
+    }
+
     function renderSpaceGrid(ctx) {
-      const sz = 80 * CAM.z;
+      const sz = Math.max(32, 80 * CAM.z);
       const ox = ((-CAM.x * CAM.z) % sz + sz) % sz;
       const oy = ((-CAM.y * CAM.z) % sz + sz) % sz;
 
@@ -3374,212 +3615,33 @@
       ctx.stroke();
     }
 
-    function renderArenaBackdrop(ctx) {
-      const W = WW, H = WH, H_TOTAL = WH + 80;
-
-      // 1. Playfield chamber fill (provides distinct contrast against outer space)
-      ctx.fillStyle = 'rgba(7, 8, 26, 0.65)';
-      ctx.fillRect(0, 0, W, H_TOTAL);
-
-      // 2. Subtle interior sector grid
-      ctx.strokeStyle = 'rgba(80, 120, 255, 0.05)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      const step = 80;
-      for (let x = step; x < W; x += step) {
-        ctx.moveTo(x, 0); ctx.lineTo(x, H);
-      }
-      for (let y = step; y < H; y += step) {
-        ctx.moveTo(0, y); ctx.lineTo(W, y);
-      }
-      ctx.stroke();
-
-      // 3. Launch bay staging deck fill
-      ctx.fillStyle = 'rgba(14, 18, 46, 0.45)';
-      ctx.fillRect(0, H, W, 80);
-    }
-
     function renderArenaBorders(ctx) {
-      const W = WW, H = WH, H_TOTAL = WH + 80;
+      const W = WW;
       const now = performance.now();
 
-      // Outer Structural Rail Plates (Cyber armor casing)
-      ctx.fillStyle = 'rgba(10, 14, 36, 0.9)';
-      ctx.fillRect(-12, -12, W + 24, 12);       // Top plate
-      ctx.fillRect(-12, 0, 12, H_TOTAL + 12);   // Left plate
-      ctx.fillRect(W, 0, 12, H_TOTAL + 12);     // Right plate
-
-      // Outer Plate Bevel Edges
-      ctx.strokeStyle = 'rgba(80, 120, 255, 0.28)';
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(-12, -12, W + 24, H_TOTAL + 24);
-
-      // ══════════════════════════════════════════════
-      // NEON ENERGY RAILS (Left, Top, Right Walls)
-      // ══════════════════════════════════════════════
-      // Wide Neon Bloom
-      ctx.strokeStyle = 'rgba(0, 229, 255, 0.18)';
-      ctx.lineWidth = 10;
-      ctx.beginPath();
-      ctx.moveTo(0, H_TOTAL);
-      ctx.lineTo(0, 0);
-      ctx.lineTo(W, 0);
-      ctx.lineTo(W, H_TOTAL);
-      ctx.stroke();
-
-      // Vibrant Cyber Shield Line
-      ctx.strokeStyle = 'rgba(74, 127, 255, 0.75)';
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(0, H_TOTAL);
-      ctx.lineTo(0, 0);
-      ctx.lineTo(W, 0);
-      ctx.lineTo(W, H_TOTAL);
-      ctx.stroke();
-
-      // Bright Core Beam
-      ctx.strokeStyle = '#e0f4ff';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(0, H_TOTAL);
-      ctx.lineTo(0, 0);
-      ctx.lineTo(W, 0);
-      ctx.lineTo(W, H_TOTAL);
-      ctx.stroke();
-
-      // ══════════════════════════════════════════════
-      // TICK MARKS & RULER NOTCHES
-      // ══════════════════════════════════════════════
-      ctx.strokeStyle = 'rgba(0, 229, 255, 0.45)';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      // Top wall ticks
-      for (let x = 40; x < W; x += 40) {
-        const maj = (x % 160 === 0);
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, maj ? 12 : 5);
-      }
-      // Left & Right wall ticks
-      for (let y = 40; y < H_TOTAL; y += 40) {
-        const maj = (y % 160 === 0);
-        ctx.moveTo(0, y);
-        ctx.lineTo(maj ? 12 : 5, y);
-        ctx.moveTo(W, y);
-        ctx.lineTo(W - (maj ? 12 : 5), y);
-      }
-      ctx.stroke();
-
-      // ══════════════════════════════════════════════
-      // GRID DIVISION LINE (At y = WH)
-      // ══════════════════════════════════════════════
-      ctx.save();
-      ctx.setLineDash([10, 8]);
-      ctx.strokeStyle = 'rgba(80, 120, 255, 0.38)';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(0, H);
-      ctx.lineTo(W, H);
-      ctx.stroke();
-      ctx.restore();
-
-      // Demarcation text
-      ctx.fillStyle = 'rgba(80, 140, 255, 0.45)';
-      ctx.font = 'bold 9px ui-monospace, monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      ctx.fillText('— FORMATION GRID BOUNDARY // LAUNCH BAY —', W / 2, H - 4);
-
-      // ══════════════════════════════════════════════
-      // BOTTOM HAZARD / VOID DROP LINE (At y = WH + 80)
-      // ══════════════════════════════════════════════
-      // Danger Glow
-      ctx.strokeStyle = 'rgba(255, 64, 96, 0.25)';
-      ctx.lineWidth = 8;
-      ctx.beginPath();
-      ctx.moveTo(0, H_TOTAL);
-      ctx.lineTo(W, H_TOTAL);
-      ctx.stroke();
-
-      // Dashed Laser Barrier
-      ctx.save();
-      ctx.setLineDash([14, 10]);
-      ctx.strokeStyle = 'rgba(255, 70, 100, 0.85)';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(0, H_TOTAL);
-      ctx.lineTo(W, H_TOTAL);
-      ctx.stroke();
-      ctx.restore();
-
-      // Hazard warning label
-      ctx.fillStyle = 'rgba(255, 90, 120, 0.7)';
-      ctx.font = 'bold 10px ui-monospace, monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.fillText('▲ ▲ ▲ VOID THRESHOLD — RECALL BOUNDARY ▲ ▲ ▲', W / 2, H_TOTAL + 4);
-
-      // ══════════════════════════════════════════════
-      // CORNER BRACKETS & PYLONS
-      // ══════════════════════════════════════════════
-      const crLen = 45;
-      ctx.strokeStyle = '#00e5ff';
-      ctx.lineWidth = 3;
-      // Top-Left Corner
-      ctx.beginPath();
-      ctx.moveTo(0, crLen);
-      ctx.lineTo(0, 0);
-      ctx.lineTo(crLen, 0);
-      ctx.stroke();
-
-      // Top-Right Corner
-      ctx.beginPath();
-      ctx.moveTo(W - crLen, 0);
-      ctx.lineTo(W, 0);
-      ctx.lineTo(W, crLen);
-      ctx.stroke();
-
-      // Corner Glowing Beacon Nodes
+      // Dynamic Corner Beacon Glowing Nodes
       const pulse = 4 + Math.sin(now * 0.005) * 1.5;
       ctx.fillStyle = '#00e5ff';
       ctx.beginPath(); ctx.arc(0, 0, pulse, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(W, 0, pulse, 0, Math.PI * 2); ctx.fill();
 
-      // Sector Corner Labels
-      ctx.font = 'bold 9px ui-monospace, monospace';
-      ctx.fillStyle = 'rgba(0, 229, 255, 0.6)';
-      ctx.textAlign = 'left';
-      ctx.fillText('SECTOR 01 [0, 0]', 14, 18);
-      ctx.textAlign = 'right';
-      ctx.fillText('SECTOR 02 [' + W + ', 0]', W - 14, 18);
-
-      // Bottom Corner Pylons
-      ctx.fillStyle = 'rgba(255, 64, 96, 0.85)';
-      ctx.beginPath(); ctx.arc(0, H_TOTAL, 4, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(W, H_TOTAL, 4, 0, Math.PI * 2); ctx.fill();
-
-      // ══════════════════════════════════════════════
-      // WALL BOUNCE IMPACT FLASHES & RIPPLES
-      // ══════════════════════════════════════════════
+      // Wall bounce impact flashes & ripples
       for (const hit of WALL_HITS) {
         const al = hit.life / hit.maxL;
         const prog = 1 - al;
 
-        // Energy flare along the wall
         ctx.strokeStyle = 'rgba(200, 240, 255, ' + (al * 0.95) + ')';
         ctx.lineWidth = 4;
         ctx.beginPath();
         if (hit.nx !== 0) {
-          // Vertical wall hit
           ctx.moveTo(hit.x, hit.y - 30);
           ctx.lineTo(hit.x, hit.y + 30);
         } else {
-          // Horizontal wall hit
           ctx.moveTo(hit.x - 30, hit.y);
           ctx.lineTo(hit.x + 30, hit.y);
         }
         ctx.stroke();
 
-        // Expanding semicircular shockwave into the arena
         const rad = prog * 36;
         ctx.strokeStyle = 'rgba(0, 229, 255, ' + (al * 0.75) + ')';
         ctx.lineWidth = 2;
@@ -3598,8 +3660,8 @@
       ctx.translate(-CAM.x * CAM.z, -CAM.y * CAM.z);
       ctx.scale(CAM.z, CAM.z);
 
-      // 0. Arena Playfield Backdrop & Interior Shading
-      renderArenaBackdrop(ctx);
+      // 0. Cached Static Arena Backdrop & Borders
+      if (arenaOffC) ctx.drawImage(arenaOffC, -24, -24);
 
       // 1. Pixel Grid
       renderGrid(ctx);
@@ -3622,7 +3684,7 @@
       // 7. Core Sunbeams & Aura
       renderCoreAura(ctx);
 
-      // 8. Arena Border Walls, Rails & Bounce Energy Flashes
+      // 8. Dynamic Arena Beacons & Wall Bounce Ripples
       renderArenaBorders(ctx);
 
       ctx.restore();
@@ -3637,11 +3699,16 @@
       const cmnY = Math.max(0, (vmnY / CKS) | 0), cmxY = Math.min(CKH - 1, (vmxY / CKS) | 0);
 
       let dirty = false;
+      let minCx = CKW, maxCx = -1, minCy = CKH, maxCy = -1;
       for (let cy = cmnY; cy <= cmxY; cy++) {
         for (let cx = cmnX; cx <= cmxX; cx++) {
           const ci = cy * CKW + cx;
           if (!ckD[ci]) continue;
           ckD[ci] = 0; dirty = true;
+          if (cx < minCx) minCx = cx;
+          if (cx > maxCx) maxCx = cx;
+          if (cy < minCy) minCy = cy;
+          if (cy > maxCy) maxCy = cy;
 
           const sx = cx * CKS, sy = cy * CKS, ex = Math.min(GW2, sx + CKS), ey = Math.min(GH2, sy + CKS);
           for (let gy = sy; gy < ey; gy++) {
@@ -3654,7 +3721,12 @@
         }
       }
 
-      if (dirty) offX.putImageData(idat, 0, 0);
+      if (dirty) {
+        const dx = minCx * CKS, dy = minCy * CKS;
+        const dw = Math.min(GW2 - dx, (maxCx - minCx + 1) * CKS);
+        const dh = Math.min(GH2 - dy, (maxCy - minCy + 1) * CKS);
+        offX.putImageData(idat, 0, 0, dx, dy, dw, dh);
+      }
 
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(offC, 0, 0, GW2 * PS, GH2 * PS);
@@ -3663,7 +3735,7 @@
     function renderBalls(ctx) {
       for (let i = 0; i < MB; i++) {
         if (!bAc[i]) continue;
-        const x = bX[i], y = bY[i], r = bR2[i], tp = bTp[i], col = PC[tp];
+        const x = bX[i], y = bY[i], r = bR2[i], tp = bTp[i];
 
         // Laser Beam Tracer
         if (tp === PROJ.R) {
@@ -3679,21 +3751,15 @@
           }
         }
 
-        // Outer Glow
-        const grd = ctx.createRadialGradient(x, y, 0, x, y, r * 2.8);
-        grd.addColorStop(0, col + 'ff');
-        grd.addColorStop(0.45, col + '88');
-        grd.addColorStop(1, col + '00');
-        ctx.fillStyle = grd;
-        ctx.beginPath(); ctx.arc(x, y, r * 2.8, 0, Math.PI * 2); ctx.fill();
-
-        // Solid Core
-        ctx.fillStyle = col;
-        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-
-        // Specular Highlight
-        ctx.fillStyle = 'rgba(255,255,255,.65)';
-        ctx.beginPath(); ctx.arc(x - r * 0.3, y - r * 0.3, r * 0.4, 0, Math.PI * 2); ctx.fill();
+        // Fast pre-rendered sprite draw (eliminates per-ball per-frame radial gradient allocations)
+        const spr = BALL_SPRITES[tp] || BALL_SPRITES[0];
+        const sRad = r * 2.8;
+        if (spr) {
+          ctx.drawImage(spr, x - sRad, y - sRad, sRad * 2, sRad * 2);
+        } else {
+          ctx.fillStyle = PC[tp];
+          ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+        }
       }
 
       // Trajectory Prediction Line
@@ -3806,14 +3872,16 @@
         ctx.globalAlpha = lt;
 
         if (pTp2[i] === 3) {
-          // Golden Sparkle
-          const grd = ctx.createRadialGradient(pX2[i], pY2[i], 0, pX2[i], pY2[i], sz * 2.5);
-          grd.addColorStop(0, 'rgba(' + pR2[i] + ',' + pG2[i] + ',' + pB2[i] + ',' + lt + ')');
-          grd.addColorStop(1, 'rgba(' + pR2[i] + ',' + pG2[i] + ',' + pB2[i] + ',0)');
-          ctx.fillStyle = grd;
-          ctx.beginPath(); ctx.arc(pX2[i], pY2[i], sz * 2.5, 0, Math.PI * 2); ctx.fill();
+          // Golden Sparkle (uses pre-rendered sparkle sprite)
+          const sprRad = sz * 2.5;
+          if (SPARKLE_SPRITE) {
+            ctx.drawImage(SPARKLE_SPRITE, pX2[i] - sprRad, pY2[i] - sprRad, sprRad * 2, sprRad * 2);
+          } else {
+            ctx.fillStyle = '#ffd700';
+            ctx.fillRect(pX2[i] - sz * 0.5, pY2[i] - sz * 0.5, sz, sz);
+          }
         } else {
-          ctx.fillStyle = 'rgb(' + pR2[i] + ',' + pG2[i] + ',' + pB2[i] + ')';
+          ctx.fillStyle = getRgbStr(pR2[i], pG2[i], pB2[i]);
           ctx.fillRect(pX2[i] - sz * 0.5, pY2[i] - sz * 0.5, sz, sz);
         }
       }
@@ -3823,17 +3891,24 @@
     function renderArcs(ctx) {
       for (const arc of ARCS) {
         const a = arc.life / 0.16;
-        ctx.strokeStyle = 'rgba(255,240,60,' + a + ')';
-        ctx.lineWidth = 2.5;
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = '#ffee44';
-        ctx.beginPath();
-        ctx.moveTo(arc.x1, arc.y1);
         const mx = (arc.x1 + arc.x2) / 2 + (Math.random() - 0.5) * 18;
         const my = (arc.y1 + arc.y2) / 2 + (Math.random() - 0.5) * 18;
+
+        // Wide neon luminous outer stroke
+        ctx.strokeStyle = 'rgba(255,230,50,' + (a * 0.35) + ')';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(arc.x1, arc.y1);
         ctx.quadraticCurveTo(mx, my, arc.x2, arc.y2);
         ctx.stroke();
-        ctx.shadowBlur = 0;
+
+        // High intensity core bolt
+        ctx.strokeStyle = 'rgba(255,255,200,' + a + ')';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(arc.x1, arc.y1);
+        ctx.quadraticCurveTo(mx, my, arc.x2, arc.y2);
+        ctx.stroke();
       }
     }
 
@@ -3973,6 +4048,9 @@
       loadSV();
       initCanvas();
       initGrid();
+      initStaticArena();
+      initBallSprites();
+      initSparkleSprite();
       initInput();
 
       setTimeout(() => {
